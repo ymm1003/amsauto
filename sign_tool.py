@@ -191,7 +191,26 @@ class AutoSignTool:
 
             b_cookie = cookies.get("JSESSIONID", "")
             if not b_cookie:
-                print(f"[JUMP ERROR] 未获取到JSESSIONID Cookie!")
+                print(f"[JUMP] 未从直接响应获取到JSESSIONID，尝试从返回data中提取URL...")
+                try:
+                    resp_data = response.json()
+                    if resp_data.get('code') == '000000' and resp_data.get('data'):
+                        b_login_url = resp_data['data']
+                        print(f"[JUMP] B系统登录URL: {b_login_url}")
+
+                        print(f"[JUMP] 访问B系统登录URL获取Cookie...")
+                        b_response = requests.get(b_login_url, timeout=30, verify=False, allow_redirects=True)
+                        print(f"[JUMP] B系统响应状态码: {b_response.status_code}")
+                        print(f"[JUMP] B系统响应Cookie: {dict(b_response.cookies)}")
+
+                        b_cookie = b_response.cookies.get("JSESSIONID", "")
+                        if b_cookie:
+                            print(f"[JUMP SUCCESS] 成功获取B系统Cookie: {b_cookie[:30]}...")
+                            return b_cookie
+                except Exception as e:
+                    print(f"[JUMP ERROR] 提取或访问B系统URL失败: {str(e)}")
+
+                print(f"[JUMP ERROR] 未能获取到JSESSIONID Cookie!")
                 print(f"[JUMP ERROR] 响应内容: {response.text[:500]}")
                 self.log(sub_acct_no, "未获取到B系统Cookie，跳转失败", "ERROR")
                 return None
