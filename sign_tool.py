@@ -31,20 +31,18 @@ class AutoSignTool:
         self.last_executed = {}
 
     def load_config(self, config_path):
-        print(f"[VERBOSE] 加载配置文件: {config_path}")
+        self.debug_log(f"加载配置文件: {config_path}")
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
         self.a_config = self.config['aSystem']
         self.b_config = self.config['bSystem']
         self.users = self.config['users']
         self.schedule = self.config.get('schedule', {})
-        print(f"[VERBOSE] =======================================")
-        print(f"[VERBOSE] A系统地址: {self.a_config['baseUrl']}")
-        print(f"[VERBOSE] B系统地址: {self.b_config['baseUrl']}")
-        print(f"[VERBOSE] 签退接口: {self.b_config['signOutPath']}")
-        print(f"[VERBOSE] 用户数量: {len(self.users)}")
-        print(f"[VERBOSE] Token长度: {len(self.a_config.get('token', ''))}")
-        print(f"[VERBOSE] =======================================")
+        self.debug_log(f"配置文件加载完成，A系统地址: {self.a_config['baseUrl']}")
+        self.debug_log(f"B系统地址: {self.b_config['baseUrl']}")
+        self.debug_log(f"签退接口: {self.b_config['signOutPath']}")
+        self.debug_log(f"用户数量: {len(self.users)}")
+        self.debug_log(f"Token长度: {len(self.a_config.get('token', ''))}")
 
     def setup_logging(self):
         log_dir = self.config.get('logPath', './logs')
@@ -52,11 +50,18 @@ class AutoSignTool:
             log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, f"sign_{datetime.now().strftime('%Y%m%d')}.log")
-        print(f"[VERBOSE] 日志文件: {self.log_file}")
+        self.debug_log(f"日志文件: {self.log_file}")
 
     def log(self, user_no, message, status="INFO"):
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_msg = f"[{timestamp}] [{status}] [{user_no}] {message}"
+        print(log_msg)
+        with open(self.log_file, 'a', encoding='utf-8') as f:
+            f.write(log_msg + '\n')
+
+    def debug_log(self, message):
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_msg = f"[{timestamp}] [DEBUG] {message}"
         print(log_msg)
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(log_msg + '\n')
@@ -88,20 +93,20 @@ class AutoSignTool:
         return headers
 
     def debug_request(self, step_name, url, headers, payload):
-        print(f"\n[DEBUG] ========== {step_name} ==========")
-        print(f"[DEBUG] URL: {url}")
-        print(f"[DEBUG] Headers: {json.dumps(headers, ensure_ascii=False)}")
-        print(f"[DEBUG] Payload: {json.dumps(payload, ensure_ascii=False)}")
-        print(f"[DEBUG] ----------------------------------")
+        self.debug_log(f"========== {step_name} ==========")
+        self.debug_log(f"URL: {url}")
+        self.debug_log(f"Headers: {json.dumps(headers, ensure_ascii=False)}")
+        self.debug_log(f"Payload: {json.dumps(payload, ensure_ascii=False)}")
+        self.debug_log(f"----------------------------------")
 
     def debug_response(self, step_name, status_code, response_text, cookies):
-        print(f"[DEBUG] Status: {status_code}")
-        print(f"[DEBUG] Response: {response_text[:500] if response_text else 'Empty'}")
-        print(f"[DEBUG] Cookies: {dict(cookies)}")
-        print(f"[DEBUG] ========== {step_name} END ==========\n")
+        self.debug_log(f"Status: {status_code}")
+        self.debug_log(f"Response: {response_text[:500] if response_text else 'Empty'}")
+        self.debug_log(f"Cookies: {dict(cookies)}")
+        self.debug_log(f"========== {step_name} END ==========")
 
     def step1_match_path(self, sub_acct_no):
-        print(f"\n[STEP1] ====== Step 1: /authn/sso/matchPath ======")
+        self.debug_log(f"====== Step 1: /authn/sso/matchPath ======")
         try:
             url = f"{self.a_config['baseUrl']}/authn/sso/matchPath"
             headers = self.get_headers()
@@ -116,11 +121,11 @@ class AutoSignTool:
 
             return response.json() if response.status_code == 200 else None
         except Exception as e:
-            print(f"[STEP1 ERROR] 异常: {str(e)}")
+            self.debug_log(f"Step1 异常: {str(e)}")
             return None
 
     def step2_trigger_login(self):
-        print(f"\n[STEP2] ====== Step 2: /ais/configure/web/controller/gold/trigger/login ======")
+        self.debug_log(f"====== Step 2: /ais/configure/web/controller/gold/trigger/login ======")
         try:
             url = f"{self.a_config['baseUrl']}/ais/configure/web/controller/gold/trigger/login"
             headers = self.get_headers()
@@ -137,27 +142,27 @@ class AutoSignTool:
 
             return response.json() if response.status_code == 200 else None
         except Exception as e:
-            print(f"[STEP2 ERROR] 异常: {str(e)}")
+            self.debug_log(f"Step2 异常: {str(e)}")
             return None
 
     def jump_to_b_system(self, sub_acct_id, sub_acct_no):
-        print(f"\n[JUMP] =============================================")
-        print(f"[JUMP] 开始处理用户: {sub_acct_no}")
-        print(f"[JUMP] SubAcctId: {sub_acct_id}")
-        print(f"[JUMP] =============================================")
+        self.debug_log("=============================================")
+        self.debug_log(f"开始处理用户: {sub_acct_no}")
+        self.debug_log(f"SubAcctId: {sub_acct_id}")
+        self.debug_log("=============================================")
 
         try:
-            print(f"\n[JUMP] ---- 执行前置步骤 ----")
+            self.debug_log("---- 执行前置步骤 ----")
 
             result1 = self.step1_match_path(sub_acct_no)
-            print(f"[JUMP] Step1 返回: {result1}")
+            self.debug_log(f"Step1 返回: {result1}")
             time.sleep(0.5)
 
             result2 = self.step2_trigger_login()
-            print(f"[JUMP] Step2 返回: {result2}")
+            self.debug_log(f"Step2 返回: {result2}")
             time.sleep(0.5)
 
-            print(f"\n[JUMP] ---- 执行最终跳转 ----")
+            self.debug_log("---- 执行最终跳转 ----")
 
             url = f"{self.a_config['baseUrl']}{self.a_config['jumpPath']}"
             headers = self.get_headers(need_x_router=True)
@@ -181,69 +186,69 @@ class AutoSignTool:
             }
 
             self.debug_request("FinalJump", url, headers, payload)
-            print(f"[JUMP] 发送最终跳转请求...")
+            self.debug_log("发送最终跳转请求...")
 
             response = requests.post(url, headers=headers, json=payload, timeout=30, verify=False)
             self.debug_response("FinalJump", response.status_code, response.text, response.cookies)
 
             cookies = response.cookies
-            print(f"[JUMP] 所有Cookie: {dict(cookies)}")
+            self.debug_log(f"所有Cookie: {dict(cookies)}")
 
             b_cookie = cookies.get("JSESSIONID", "")
             if not b_cookie:
-                print(f"[JUMP] 未从直接响应获取到JSESSIONID，尝试从返回data中提取URL...")
+                self.debug_log("未从直接响应获取到JSESSIONID，尝试从返回data中提取URL...")
                 try:
                     resp_data = response.json()
                     if resp_data.get('code') == '000000' and resp_data.get('data'):
                         b_login_url = resp_data['data']
-                        print(f"[JUMP] B系统登录URL: {b_login_url}")
+                        self.debug_log(f"B系统登录URL: {b_login_url}")
 
-                        print(f"[JUMP] 使用Session访问B系统登录URL...")
+                        self.debug_log("使用Session访问B系统登录URL...")
                         b_session = requests.Session()
 
-                        print(f"[JUMP] Step A: GET请求B系统登录URL...")
+                        self.debug_log("Step A: GET请求B系统登录URL...")
                         b_get_resp = b_session.get(b_login_url, timeout=30, verify=False, allow_redirects=True)
-                        print(f"[JUMP] GET响应状态码: {b_get_resp.status_code}")
-                        print(f"[JUMP] GET响应Cookie: {dict(b_session.cookies)}")
-                        print(f"[JUMP] GET响应最终URL: {b_get_resp.url}")
-                        print(f"[JUMP] GET响应内容前200字符: {b_get_resp.text[:200]}")
+                        self.debug_log(f"GET响应状态码: {b_get_resp.status_code}")
+                        self.debug_log(f"GET响应Cookie: {dict(b_session.cookies)}")
+                        self.debug_log(f"GET响应最终URL: {b_get_resp.url}")
+                        self.debug_log(f"GET响应内容前200字符: {b_get_resp.text[:200]}")
 
                         b_cookie = b_session.cookies.get("JSESSIONID", "")
 
                         if not b_cookie:
-                            print(f"[JUMP] GET未获取到Cookie，尝试POST请求...")
+                            self.debug_log("GET未获取到Cookie，尝试POST请求...")
                             b_post_resp = b_session.post(b_login_url, timeout=30, verify=False, allow_redirects=True, data={})
-                            print(f"[JUMP] POST响应状态码: {b_post_resp.status_code}")
-                            print(f"[JUMP] POST响应Cookie: {dict(b_session.cookies)}")
-                            print(f"[JUMP] POST响应内容前200字符: {b_post_resp.text[:200]}")
+                            self.debug_log(f"POST响应状态码: {b_post_resp.status_code}")
+                            self.debug_log(f"POST响应Cookie: {dict(b_session.cookies)}")
+                            self.debug_log(f"POST响应内容前200字符: {b_post_resp.text[:200]}")
                             b_cookie = b_session.cookies.get("JSESSIONID", "")
 
                         if b_cookie:
-                            print(f"[JUMP SUCCESS] 成功获取B系统Cookie: {b_cookie[:30]}...")
+                            self.debug_log(f"成功获取B系统Cookie: {b_cookie[:30]}...")
                             return b_cookie
 
                 except Exception as e:
-                    print(f"[JUMP ERROR] 提取或访问B系统URL失败: {str(e)}")
+                    self.debug_log(f"提取或访问B系统URL失败: {str(e)}")
                     import traceback
-                    print(f"[JUMP ERROR] 详细异常: {traceback.format_exc()}")
+                    self.debug_log(f"详细异常: {traceback.format_exc()}")
 
-                print(f"[JUMP ERROR] 未能获取到JSESSIONID Cookie!")
-                print(f"[JUMP ERROR] 响应内容: {response.text[:500]}")
+                self.debug_log("未能获取到JSESSIONID Cookie!")
+                self.debug_log(f"响应内容: {response.text[:500]}")
                 self.log(sub_acct_no, "未获取到B系统Cookie，跳转失败", "ERROR")
                 return None
 
-            print(f"[JUMP SUCCESS] 成功获取B系统Cookie: {b_cookie[:30]}...")
+            self.debug_log(f"成功获取B系统Cookie: {b_cookie[:30]}...")
             return b_cookie
 
         except Exception as e:
-            print(f"[JUMP ERROR] 跳转B系统异常: {str(e)}")
+            self.debug_log(f"跳转B系统异常: {str(e)}")
             import traceback
-            print(f"[JUMP ERROR] 详细异常: {traceback.format_exc()}")
+            self.debug_log(f"详细异常: {traceback.format_exc()}")
             self.log(sub_acct_no, f"跳转B系统失败: {str(e)}", "ERROR")
             return None
 
     def sign_out(self, sub_acct_id, sub_acct_no, b_cookie):
-        print(f"\n[SIGNOUT] ====== 签退操作 ======")
+        self.debug_log("====== 签退操作 ======")
         try:
             url = f"{self.b_config['baseUrl']}{self.b_config['signOutPath']}"
             headers = {
@@ -252,20 +257,20 @@ class AutoSignTool:
                 "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/94.0.4606.71 Safari/537.36"
             }
 
-            print(f"[SIGNOUT] URL: {url}")
-            print(f"[SIGNOUT] Cookie: JSESSIONID={b_cookie[:30]}...")
+            self.debug_log(f"URL: {url}")
+            self.debug_log(f"Cookie: JSESSIONID={b_cookie[:30]}...")
 
             response = requests.post(url, headers=headers, json={}, timeout=30, verify=False)
-            print(f"[SIGNOUT] 响应状态码: {response.status_code}")
-            print(f"[SIGNOUT] 响应内容: {response.text}")
+            self.debug_log(f"响应状态码: {response.status_code}")
+            self.debug_log(f"响应内容: {response.text}")
 
             result = response.text
             self.log(sub_acct_no, f"签退结果: {result}", "SUCCESS")
-            print(f"[SIGNOUT] 用户 {sub_acct_no} 签退完成")
+            self.debug_log(f"用户 {sub_acct_no} 签退完成")
             return True
 
         except Exception as e:
-            print(f"[SIGNOUT ERROR] 签退异常: {str(e)}")
+            self.debug_log(f"签退异常: {str(e)}")
             self.log(sub_acct_no, f"签退失败: {str(e)}", "ERROR")
             return False
 

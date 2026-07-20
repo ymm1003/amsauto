@@ -32,5 +32,6 @@
       }
     ]
   },
-  "logPath": "./logs"
+  "logPath": "./logs",
+  "logLevel": "DEBUG"
 }
