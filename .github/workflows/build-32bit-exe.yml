@@ -34,7 +34,7 @@ jobs:
       - name: Build with PyInstaller (32-bit)
         run: |
           $env:Path = "$env:PYTHON_DLL_DIR;$env:Path"
-          python -m PyInstaller --paths "$env:PYTHON_DLL_DIR" sign_tool.spec
+          python -m PyInstaller sign_tool.spec
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
