@@ -72,10 +72,12 @@ class AutoSignTool:
             print(f"[VERBOSE] 发送跳转请求...")
             response = requests.post(url, headers=headers, json=payload, timeout=30)
             print(f"[VERBOSE] 响应状态码: {response.status_code}")
-            print(f"[VERBOSE] 响应头: {dict(response.headers)}")
+            headers_dict = dict(response.headers)
+            print(f"[VERBOSE] 响应头: {headers_dict}")
 
             cookies = response.cookies
-            print(f"[VERBOSE] 响应Cookie: {dict(cookies)")
+            cookies_dict = dict(cookies)
+            print(f"[VERBOSE] 响应Cookie: {cookies_dict}")
 
             b_cookie = cookies.get("JSESSIONID", "")
             if not b_cookie:
