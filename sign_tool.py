@@ -183,9 +183,6 @@ class AutoSignTool:
         print(f"{'='*60}")
         return success_count, fail_count
 
-    def run(self):
-        self.run_single_round("单次执行", "signout")
-
     def run_schedule(self):
         print(f"{'='*60}")
         print(f"自动签到签退工具启动（定时模式）- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -194,9 +191,8 @@ class AutoSignTool:
         schedules = self.schedule.get('tasks', [])
 
         if not schedules:
-            print("[WARNING] 没有配置定时任务，使用单次执行模式")
-            self.run()
-            return
+            print("[WARNING] 没有配置定时任务，程序退出")
+            sys.exit(0)
 
         for task in schedules:
             mode = task.get('mode', 'signout')
@@ -233,3 +229,7 @@ class AutoSignTool:
                         break
 
             time.sleep(30)
+
+if __name__ == "__main__":
+    tool = AutoSignTool()
+    tool.run_schedule()
