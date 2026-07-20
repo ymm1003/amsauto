@@ -19,7 +19,7 @@ jobs:
 
       - run: pip install pyinstaller requests
 
-      - run: pyinstaller --onefile --name "AutoSignTool" --add-data "config.json;." sign_tool.py
+      - run: pyinstaller --onefile --name "AutoSignTool" sign_tool.py
 
       - uses: actions/upload-artifact@v4
         with:
