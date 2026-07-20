@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
 
 def get_config_path():
@@ -27,6 +28,7 @@ class AutoSignTool:
         self.load_config(config_path)
         self.session = requests.Session()
         self.setup_logging()
+        self.last_executed = {}
 
     def load_config(self, config_path):
         print(f"[VERBOSE] 加载配置文件: {config_path}")
@@ -35,10 +37,12 @@ class AutoSignTool:
         self.a_config = self.config['aSystem']
         self.b_config = self.config['bSystem']
         self.users = self.config['users']
+        self.schedule = self.config.get('schedule', {})
         print(f"[VERBOSE] 配置文件加载完成，A系统地址: {self.a_config['baseUrl']}")
         print(f"[VERBOSE] B系统地址: {self.b_config['baseUrl']}")
         print(f"[VERBOSE] 签退接口: {self.b_config['signOutPath']}")
         print(f"[VERBOSE] 用户数量: {len(self.users)}")
+        print(f"[VERBOSE] 定时配置: {json.dumps(self.schedule, ensure_ascii=False)}")
 
     def setup_logging(self):
         log_dir = self.config.get('logPath', './logs')
@@ -67,7 +71,6 @@ class AutoSignTool:
                 "Cookie": f"z4a-web-token={self.a_config['token']}",
                 "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/94.0.4606.71 Safari/537.36"
             }
-            print(f"[VERBOSE] 请求头: {json.dumps(headers, ensure_ascii=False, indent=2)}")
 
             payload = {
                 "loginUrl": f"{self.b_config['baseUrl']}/dcits/auto4Alogin",
@@ -86,18 +89,12 @@ class AutoSignTool:
                 },
                 "transferUrl": f"{self.a_config['baseUrl']}{self.a_config['transferPath']}"
             }
-            print(f"[VERBOSE] 请求Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
 
             print(f"[VERBOSE] 发送跳转请求...")
             response = requests.post(url, headers=headers, json=payload, timeout=30, verify=False)
             print(f"[VERBOSE] 响应状态码: {response.status_code}")
-            headers_dict = dict(response.headers)
-            print(f"[VERBOSE] 响应头: {headers_dict}")
 
             cookies = response.cookies
-            cookies_dict = dict(cookies)
-            print(f"[VERBOSE] 响应Cookie: {cookies_dict}")
-
             b_cookie = cookies.get("JSESSIONID", "")
             if not b_cookie:
                 print(f"[VERBOSE] 未获取到JSESSIONID Cookie，跳转失败")
@@ -116,18 +113,15 @@ class AutoSignTool:
         print(f"[VERBOSE] 开始签退操作...")
         try:
             url = f"{self.b_config['baseUrl']}{self.b_config['signOutPath']}"
-            print(f"[VERBOSE] 签退URL: {url}")
             headers = {
                 "Content-Type": "application/json",
                 "Cookie": f"JSESSIONID={b_cookie}",
                 "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/94.0.4606.71 Safari/537.36"
             }
-            print(f"[VERBOSE] Cookie: JSESSIONID={b_cookie[:20]}...")
 
             print(f"[VERBOSE] 发送签退请求...")
             response = requests.post(url, headers=headers, json={}, timeout=30, verify=False)
             print(f"[VERBOSE] 响应状态码: {response.status_code}")
-            print(f"[VERBOSE] 响应内容: {response.text}")
 
             result = response.text
             self.log(sub_acct_no, f"签退结果: {result}", "SUCCESS")
@@ -139,10 +133,19 @@ class AutoSignTool:
             self.log(sub_acct_no, f"签退失败: {str(e)}", "ERROR")
             return False
 
-    def process_user(self, user):
+    def process_user_sign_in(self, user):
         sub_acct_id = user['subAcctId']
         sub_acct_no = user['subAcctNo']
+        self.log(sub_acct_no, "开始签到（跳转B系统）")
+        b_cookie = self.jump_to_b_system(sub_acct_id, sub_acct_no)
+        if b_cookie:
+            self.log(sub_acct_no, "签到成功", "SUCCESS")
+            return True
+        return False
 
+    def process_user_sign_out(self, user):
+        sub_acct_id = user['subAcctId']
+        sub_acct_no = user['subAcctNo']
         self.log(sub_acct_no, "开始处理签退")
 
         b_cookie = self.jump_to_b_system(sub_acct_id, sub_acct_no)
@@ -151,9 +154,10 @@ class AutoSignTool:
 
         return self.sign_out(sub_acct_id, sub_acct_no, b_cookie)
 
-    def run(self):
-        print(f"{'='*60}")
-        print(f"自动签退工具启动 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    def run_single_round(self, round_name="", mode="signin"):
+        action = "签到" if mode == "signin" else "签退"
+        print(f"\n{'='*60}")
+        print(f"{action}第 {round_name} 执行 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"待处理人数: {len(self.users)}")
         print(f"{'='*60}")
 
@@ -162,16 +166,70 @@ class AutoSignTool:
 
         for idx, user in enumerate(self.users, 1):
             print(f"\n[进度] 当前: {idx}/{len(self.users)}")
-            if self.process_user(user):
-                success_count += 1
+            if mode == "signin":
+                if self.process_user_sign_in(user):
+                    success_count += 1
+                else:
+                    fail_count += 1
             else:
-                fail_count += 1
+                if self.process_user_sign_out(user):
+                    success_count += 1
+                else:
+                    fail_count += 1
             time.sleep(1)
 
         print(f"\n{'='*60}")
-        print(f"处理完成 - 成功: {success_count}, 失败: {fail_count}")
+        print(f"{action}第 {round_name} 执行完成 - 成功: {success_count}, 失败: {fail_count}")
+        print(f"{'='*60}")
+        return success_count, fail_count
+
+    def run(self):
+        self.run_single_round("单次执行", "signout")
+
+    def run_schedule(self):
+        print(f"{'='*60}")
+        print(f"自动签到签退工具启动（定时模式）- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}")
 
-if __name__ == "__main__":
-    tool = AutoSignTool()
-    tool.run()
+        schedules = self.schedule.get('tasks', [])
+
+        if not schedules:
+            print("[WARNING] 没有配置定时任务，使用单次执行模式")
+            self.run()
+            return
+
+        for task in schedules:
+            mode = task.get('mode', 'signout')
+            action = "签到" if mode == "signin" else "签退"
+            rounds = task.get('rounds', 1)
+            print(f"[定时任务] {task.get('name', '未命名')} - {action} - 重复{rounds}轮")
+
+        print(f"[INFO] 定时监控已启动，按 Ctrl+C 停止")
+
+        while True:
+            now = datetime.now()
+            current_time = now.strftime('%H:%M')
+
+            for task in schedules:
+                times = task.get('times', [])
+                rounds = task.get('rounds', 1)
+                task_name = task.get('name', '未命名')
+                mode = task.get('mode', 'signout')
+                task_key = f"{task_name}_{current_time}"
+
+                if task_key in self.last_executed:
+                    continue
+
+                for target_time in times:
+                    if current_time == target_time:
+                        action = "签到" if mode == "signin" else "签退"
+                        print(f"\n[触发] 定时任务: {task_name} @ {current_time} - {action}")
+                        self.last_executed[task_key] = True
+
+                        for round_num in range(1, rounds + 1):
+                            print(f"[轮次] 第 {round_num}/{rounds} 轮")
+                            self.run_single_round(f"第{round_num}轮", mode)
+
+                        break
+
+            time.sleep(30)

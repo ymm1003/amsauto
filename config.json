@@ -16,5 +16,21 @@
       "subAcctNo": "yanmm"
     }
   ],
+  "schedule": {
+    "tasks": [
+      {
+        "name": "早上签到",
+        "times": ["07:30"],
+        "mode": "signin",
+        "rounds": 2
+      },
+      {
+        "name": "下午签退",
+        "times": ["18:00"],
+        "mode": "signout",
+        "rounds": 2
+      }
+    ]
+  },
   "logPath": "./logs"
 }
