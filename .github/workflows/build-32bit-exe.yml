@@ -7,18 +7,27 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build 32-bit Windows EXE via Docker (Wine + PyInstaller)
+      - name: Setup Python (32-bit x86)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x86'  # 32-bit
+
+      - name: Install dependencies
         run: |
-          docker run --rm \
-            -v "$(pwd):/src" \
-            cdrx/pyinstaller-windows:python3_32bit \
-            sign_tool.spec
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller (32-bit)
+        run: |
+          pyinstaller sign_tool.spec
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
