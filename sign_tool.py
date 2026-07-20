@@ -69,7 +69,10 @@ class AutoSignTool:
             headers = {
                 "Content-Type": "application/json",
                 "Cookie": f"z4a-web-token={self.a_config['token']}",
-                "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/94.0.4606.71 Safari/537.36"
+                "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/94.0.4606.71 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Origin": self.a_config['baseUrl'],
+                "Referer": self.a_config['baseUrl']
             }
 
             payload = {
@@ -95,9 +98,13 @@ class AutoSignTool:
             print(f"[VERBOSE] 响应状态码: {response.status_code}")
 
             cookies = response.cookies
+            print(f"[VERBOSE] 所有Cookie: {dict(cookies)}")
+            print(f"[VERBOSE] Cookie域名: {self.b_config['cookieDomain']}")
+
             b_cookie = cookies.get("JSESSIONID", "")
             if not b_cookie:
-                print(f"[VERBOSE] 未获取到JSESSIONID Cookie，跳转失败")
+                print(f"[ERROR] 未获取到JSESSIONID Cookie")
+                print(f"[ERROR] 响应内容: {response.text[:500]}")
                 self.log(sub_acct_no, "未获取到B系统Cookie，跳转失败", "ERROR")
                 return None
 
