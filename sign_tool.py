@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 import os
 import sys
+import warnings
+warnings.filterwarnings('ignore')
 
 def get_config_path():
     if getattr(sys, 'frozen', False):
@@ -87,7 +89,7 @@ class AutoSignTool:
             print(f"[VERBOSE] 请求Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
 
             print(f"[VERBOSE] 发送跳转请求...")
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response = requests.post(url, headers=headers, json=payload, timeout=30, verify=False)
             print(f"[VERBOSE] 响应状态码: {response.status_code}")
             headers_dict = dict(response.headers)
             print(f"[VERBOSE] 响应头: {headers_dict}")
@@ -123,7 +125,7 @@ class AutoSignTool:
             print(f"[VERBOSE] Cookie: JSESSIONID={b_cookie[:20]}...")
 
             print(f"[VERBOSE] 发送签退请求...")
-            response = requests.post(url, headers=headers, json={}, timeout=30)
+            response = requests.post(url, headers=headers, json={}, timeout=30, verify=False)
             print(f"[VERBOSE] 响应状态码: {response.status_code}")
             print(f"[VERBOSE] 响应内容: {response.text}")
 
