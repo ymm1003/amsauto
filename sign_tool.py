@@ -5,8 +5,23 @@ from datetime import datetime
 import os
 import sys
 
+def get_config_path():
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+        config_path = os.path.join(base_dir, 'config.json')
+    else:
+        config_path = 'config.json'
+
+    if not os.path.exists(config_path):
+        print(f"[ERROR] 配置文件不存在: {config_path}")
+        sys.exit(1)
+
+    return config_path
+
 class AutoSignTool:
-    def __init__(self, config_path="config.json"):
+    def __init__(self, config_path=None):
+        if config_path is None:
+            config_path = get_config_path()
         self.load_config(config_path)
         self.session = requests.Session()
         self.setup_logging()
@@ -25,6 +40,8 @@ class AutoSignTool:
 
     def setup_logging(self):
         log_dir = self.config.get('logPath', './logs')
+        if getattr(sys, 'frozen', False):
+            log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, f"sign_{datetime.now().strftime('%Y%m%d')}.log")
         print(f"[VERBOSE] 日志文件: {self.log_file}")
