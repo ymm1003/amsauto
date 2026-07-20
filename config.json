@@ -1,0 +1,20 @@
+{
+  "aSystem": {
+    "baseUrl": "https://10.210.112.223",
+    "token": "e48fe35e1b8654e3966d957a66946cca2970e738f9f62a3b08a9b819d4515036",
+    "jumpPath": "/SX_NO_CRM_TICKET",
+    "transferPath": "/appResource/v1/formpost.html"
+  },
+  "bSystem": {
+    "baseUrl": "http://10.212.102.176:7001",
+    "cookieDomain": "10.212.102.176",
+    "signOutPath": "/dcits/userloginrec/userloginrec/checkout"
+  },
+  "users": [
+    {
+      "subAcctId": "744888090134281",
+      "subAcctNo": "yanmm"
+    }
+  ],
+  "logPath": "./logs"
+}
