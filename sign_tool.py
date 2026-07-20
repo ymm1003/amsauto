@@ -198,17 +198,34 @@ class AutoSignTool:
                         b_login_url = resp_data['data']
                         print(f"[JUMP] B系统登录URL: {b_login_url}")
 
-                        print(f"[JUMP] 访问B系统登录URL获取Cookie...")
-                        b_response = requests.get(b_login_url, timeout=30, verify=False, allow_redirects=True)
-                        print(f"[JUMP] B系统响应状态码: {b_response.status_code}")
-                        print(f"[JUMP] B系统响应Cookie: {dict(b_response.cookies)}")
+                        print(f"[JUMP] 使用Session访问B系统登录URL...")
+                        b_session = requests.Session()
 
-                        b_cookie = b_response.cookies.get("JSESSIONID", "")
+                        print(f"[JUMP] Step A: GET请求B系统登录URL...")
+                        b_get_resp = b_session.get(b_login_url, timeout=30, verify=False, allow_redirects=True)
+                        print(f"[JUMP] GET响应状态码: {b_get_resp.status_code}")
+                        print(f"[JUMP] GET响应Cookie: {dict(b_session.cookies)}")
+                        print(f"[JUMP] GET响应最终URL: {b_get_resp.url}")
+                        print(f"[JUMP] GET响应内容前200字符: {b_get_resp.text[:200]}")
+
+                        b_cookie = b_session.cookies.get("JSESSIONID", "")
+
+                        if not b_cookie:
+                            print(f"[JUMP] GET未获取到Cookie，尝试POST请求...")
+                            b_post_resp = b_session.post(b_login_url, timeout=30, verify=False, allow_redirects=True, data={})
+                            print(f"[JUMP] POST响应状态码: {b_post_resp.status_code}")
+                            print(f"[JUMP] POST响应Cookie: {dict(b_session.cookies)}")
+                            print(f"[JUMP] POST响应内容前200字符: {b_post_resp.text[:200]}")
+                            b_cookie = b_session.cookies.get("JSESSIONID", "")
+
                         if b_cookie:
                             print(f"[JUMP SUCCESS] 成功获取B系统Cookie: {b_cookie[:30]}...")
                             return b_cookie
+
                 except Exception as e:
                     print(f"[JUMP ERROR] 提取或访问B系统URL失败: {str(e)}")
+                    import traceback
+                    print(f"[JUMP ERROR] 详细异常: {traceback.format_exc()}")
 
                 print(f"[JUMP ERROR] 未能获取到JSESSIONID Cookie!")
                 print(f"[JUMP ERROR] 响应内容: {response.text[:500]}")
