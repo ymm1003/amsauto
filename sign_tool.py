@@ -38,6 +38,17 @@ class AutoSignTool:
         self.setup_logging()
         self.last_executed = {}
 
+    def reload_config(self):
+        config_path = get_config_path()
+        with open(config_path, 'r', encoding='utf-8') as f:
+            self.config = json.load(f)
+        self.a_config = self.config['aSystem']
+        self.b_config = self.config['bSystem']
+        self.users = self.config['users']
+        self.schedule = self.config.get('schedule', {})
+        self.log_level = self.config.get('logLevel', 'DEBUG').upper()
+        self.debug_log(f"配置已重新加载，用户数量: {len(self.users)}, 配置文件: {config_path}")
+
     def load_config(self, config_path):
         self.debug_log(f"加载配置文件: {config_path}")
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -395,6 +406,7 @@ class AutoSignTool:
                 for target_time in times:
                     if current_time == target_time:
                         action = "签到" if mode == "signin" else "签退"
+                        self.reload_config()
                         print(f"\n{'='*60}")
                         print(f"[触发] 定时任务: {task_name}")
                         print(f"[触发] 触发时间: {current_time}")
