@@ -31,6 +31,8 @@ class AutoSignTool:
         if config_path is None:
             config_path = get_config_path()
         self.log_file = None
+        self.log_level = 'DEBUG'
+        self.config = {}
         self.load_config(config_path)
         self.session = requests.Session()
         self.setup_logging()
