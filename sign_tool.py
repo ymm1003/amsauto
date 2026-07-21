@@ -39,11 +39,13 @@ class AutoSignTool:
         self.b_config = self.config['bSystem']
         self.users = self.config['users']
         self.schedule = self.config.get('schedule', {})
+        self.log_level = self.config.get('logLevel', 'DEBUG').upper()
         self.debug_log(f"配置文件加载完成，A系统地址: {self.a_config['baseUrl']}")
         self.debug_log(f"B系统地址: {self.b_config['baseUrl']}")
         self.debug_log(f"签退接口: {self.b_config['signOutPath']}")
         self.debug_log(f"用户数量: {len(self.users)}")
         self.debug_log(f"Token长度: {len(self.a_config.get('token', ''))}")
+        self.debug_log(f"日志级别: {self.log_level}")
 
     def setup_logging(self):
         log_dir = self.config.get('logPath', './logs')
@@ -54,6 +56,13 @@ class AutoSignTool:
         self.debug_log(f"日志文件: {self.log_file}")
 
     def log(self, user_no, message, status="INFO"):
+        status = status.upper()
+        if self.log_level == 'INFO' and status == 'DEBUG':
+            return
+        if self.log_level == 'WARNING' and status in ['DEBUG', 'INFO']:
+            return
+        if self.log_level == 'ERROR' and status in ['DEBUG', 'INFO', 'WARNING']:
+            return
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_msg = f"[{timestamp}] [{status}] [{user_no}] {message}"
         print(log_msg)
@@ -62,6 +71,8 @@ class AutoSignTool:
                 f.write(log_msg + '\n')
 
     def debug_log(self, message):
+        if self.log_level != 'DEBUG':
+            return
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_msg = f"[{timestamp}] [DEBUG] {message}"
         print(log_msg)
