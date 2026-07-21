@@ -25,6 +25,7 @@ class AutoSignTool:
     def __init__(self, config_path=None):
         if config_path is None:
             config_path = get_config_path()
+        self.log_file = None
         self.load_config(config_path)
         self.session = requests.Session()
         self.setup_logging()
@@ -56,15 +57,17 @@ class AutoSignTool:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_msg = f"[{timestamp}] [{status}] [{user_no}] {message}"
         print(log_msg)
-        with open(self.log_file, 'a', encoding='utf-8') as f:
-            f.write(log_msg + '\n')
+        if self.log_file:
+            with open(self.log_file, 'a', encoding='utf-8') as f:
+                f.write(log_msg + '\n')
 
     def debug_log(self, message):
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_msg = f"[{timestamp}] [DEBUG] {message}"
         print(log_msg)
-        with open(self.log_file, 'a', encoding='utf-8') as f:
-            f.write(log_msg + '\n')
+        if self.log_file:
+            with open(self.log_file, 'a', encoding='utf-8') as f:
+                f.write(log_msg + '\n')
 
     def get_headers(self, need_x_router=False):
         headers = {
