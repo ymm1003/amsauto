@@ -9,6 +9,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def get_config_path():
+    for i, arg in enumerate(sys.argv):
+        if arg in ['-c', '--config'] and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
         config_path = os.path.join(base_dir, 'config.json')
@@ -17,6 +21,7 @@ def get_config_path():
 
     if not os.path.exists(config_path):
         print(f"[ERROR] 配置文件不存在: {config_path}")
+        print(f"[INFO] 使用 -c 或 --config 参数指定配置文件路径")
         sys.exit(1)
 
     return config_path
