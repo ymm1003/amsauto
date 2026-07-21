@@ -9,6 +9,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def get_config_path():
+    for i, arg in enumerate(sys.argv):
+        if arg in ['-c', '--config'] and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
         config_path = os.path.join(base_dir, 'config.json')
@@ -17,6 +21,7 @@ def get_config_path():
 
     if not os.path.exists(config_path):
         print(f"[ERROR] 配置文件不存在: {config_path}")
+        print(f"[INFO] 使用 -c 或 --config 参数指定配置文件路径")
         sys.exit(1)
 
     return config_path
@@ -26,10 +31,32 @@ class AutoSignTool:
         if config_path is None:
             config_path = get_config_path()
         self.log_file = None
+        self.log_level = 'DEBUG'
+        self.config = {}
         self.load_config(config_path)
         self.session = requests.Session()
         self.setup_logging()
         self.last_executed = {}
+
+    def reload_config(self):
+        config_path = get_config_path()
+        with open(config_path, 'r', encoding='utf-8') as f:
+            self.config = json.load(f)
+        self.a_config = self.config['aSystem']
+        self.b_config = self.config['bSystem']
+        self.users = self.config['users']
+        self.schedule = self.config.get('schedule', {})
+        self.log_level = self.config.get('logLevel', 'DEBUG').upper()
+        self.debug_log(f"配置已重新加载，用户数量: {len(self.users)}, 配置文件: {config_path}")
+
+    def is_workday(self):
+        now = datetime.now()
+        if now.weekday() >= 5:
+            return False
+        holidays = self.config.get('holidays', [])
+        if now.strftime('%Y-%m-%d') in holidays:
+            return False
+        return True
 
     def load_config(self, config_path):
         self.debug_log(f"加载配置文件: {config_path}")
@@ -39,11 +66,13 @@ class AutoSignTool:
         self.b_config = self.config['bSystem']
         self.users = self.config['users']
         self.schedule = self.config.get('schedule', {})
+        self.log_level = self.config.get('logLevel', 'DEBUG').upper()
         self.debug_log(f"配置文件加载完成，A系统地址: {self.a_config['baseUrl']}")
         self.debug_log(f"B系统地址: {self.b_config['baseUrl']}")
         self.debug_log(f"签退接口: {self.b_config['signOutPath']}")
         self.debug_log(f"用户数量: {len(self.users)}")
         self.debug_log(f"Token长度: {len(self.a_config.get('token', ''))}")
+        self.debug_log(f"日志级别: {self.log_level}")
 
     def setup_logging(self):
         log_dir = self.config.get('logPath', './logs')
@@ -54,6 +83,13 @@ class AutoSignTool:
         self.debug_log(f"日志文件: {self.log_file}")
 
     def log(self, user_no, message, status="INFO"):
+        status = status.upper()
+        if self.log_level == 'INFO' and status == 'DEBUG':
+            return
+        if self.log_level == 'WARNING' and status in ['DEBUG', 'INFO']:
+            return
+        if self.log_level == 'ERROR' and status in ['DEBUG', 'INFO', 'WARNING']:
+            return
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_msg = f"[{timestamp}] [{status}] [{user_no}] {message}"
         print(log_msg)
@@ -62,6 +98,8 @@ class AutoSignTool:
                 f.write(log_msg + '\n')
 
     def debug_log(self, message):
+        if self.log_level != 'DEBUG':
+            return
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_msg = f"[{timestamp}] [DEBUG] {message}"
         print(log_msg)
@@ -376,7 +414,11 @@ class AutoSignTool:
 
                 for target_time in times:
                     if current_time == target_time:
+                        if not self.is_workday():
+                            self.debug_log(f"跳过非工作日执行: {current_time}")
+                            break
                         action = "签到" if mode == "signin" else "签退"
+                        self.reload_config()
                         print(f"\n{'='*60}")
                         print(f"[触发] 定时任务: {task_name}")
                         print(f"[触发] 触发时间: {current_time}")
