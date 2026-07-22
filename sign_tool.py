@@ -288,20 +288,49 @@ class AutoSignTool:
             self.log(sub_acct_no, f"跳转B系统失败: {str(e)}", "ERROR")
             return None
 
-    def sign_out(self, sub_acct_id, sub_acct_no, b_cookie):
-        self.debug_log("====== 签退操作 ======")
+    def sign_in(self, sub_acct_id, sub_acct_no, b_cookie):
+        self.debug_log("====== 签到操作 ======")
         try:
-            url = f"{self.b_config['baseUrl']}{self.b_config['signOutPath']}"
+            url = f"{self.b_config['baseUrl']}/dcits/userloginrec/userloginrec/checkin"
             headers = {
-                "Content-Type": "application/json",
                 "Cookie": f"JSESSIONID={b_cookie}",
-                "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/94.0.4606.71 Safari/537.36"
+                "X-Requested-With": "XMLHttpRequest",
+                "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/83.0.4103.115 Safari/537.36 Qaxbrowser"
             }
 
             self.debug_log(f"URL: {url}")
             self.debug_log(f"Cookie: JSESSIONID={b_cookie[:30]}...")
 
-            response = requests.post(url, headers=headers, json={}, timeout=30, verify=False)
+            response = requests.post(url, headers=headers, timeout=30, verify=False)
+            self.debug_log(f"响应状态码: {response.status_code}")
+            self.debug_log(f"响应内容: {response.text}")
+
+            if response.status_code == 200:
+                self.log(sub_acct_no, f"签到成功: {response.text}", "SUCCESS")
+                return True
+            else:
+                self.log(sub_acct_no, f"签到失败: {response.status_code}", "ERROR")
+                return False
+
+        except Exception as e:
+            self.debug_log(f"签到异常: {str(e)}")
+            self.log(sub_acct_no, f"签到失败: {str(e)}", "ERROR")
+            return False
+
+    def sign_out(self, sub_acct_id, sub_acct_no, b_cookie):
+        self.debug_log("====== 签退操作 ======")
+        try:
+            url = f"{self.b_config['baseUrl']}{self.b_config['signOutPath']}"
+            headers = {
+                "Cookie": f"JSESSIONID={b_cookie}",
+                "X-Requested-With": "XMLHttpRequest",
+                "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/83.0.4103.115 Safari/537.36 Qaxbrowser"
+            }
+
+            self.debug_log(f"URL: {url}")
+            self.debug_log(f"Cookie: JSESSIONID={b_cookie[:30]}...")
+
+            response = requests.post(url, headers=headers, timeout=30, verify=False)
             self.debug_log(f"响应状态码: {response.status_code}")
             self.debug_log(f"响应内容: {response.text}")
 
@@ -319,11 +348,12 @@ class AutoSignTool:
         sub_acct_id = user['subAcctId']
         sub_acct_no = user['subAcctNo']
         self.log(sub_acct_no, "开始签到（跳转B系统）")
+
         b_cookie = self.jump_to_b_system(sub_acct_id, sub_acct_no)
-        if b_cookie:
-            self.log(sub_acct_no, "签到成功", "SUCCESS")
-            return True
-        return False
+        if not b_cookie:
+            return False
+
+        return self.sign_in(sub_acct_id, sub_acct_no, b_cookie)
 
     def process_user_sign_out(self, user):
         sub_acct_id = user['subAcctId']
