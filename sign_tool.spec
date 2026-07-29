@@ -6,7 +6,7 @@ a = Analysis(
     ['sign_tool.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.json', '.')],
+    datas=[],
     hiddenimports=['requests'],
     hookspath=[],
     hooksconfig={},

@@ -10,22 +10,37 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def get_config_path():
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    config_path = os.path.join(base_dir, 'config.json')
+
+    if not os.path.exists(config_path):
+        print(f"[ERROR] 配置文件不存在: {config_path}")
+        sys.exit(1)
+
+    return config_path
+
+def get_users_path():
     for i, arg in enumerate(sys.argv):
-        if arg in ['-c', '--config'] and i + 1 < len(sys.argv):
+        if arg in ['-u', '--users'] and i + 1 < len(sys.argv):
             return sys.argv[i + 1]
 
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
-        config_path = os.path.join(base_dir, 'config.json')
     else:
-        config_path = 'config.json'
+        base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    if not os.path.exists(config_path):
-        print(f"[ERROR] 配置文件不存在: {config_path}")
-        print(f"[INFO] 使用 -c 或 --config 参数指定配置文件路径")
+    users_path = os.path.join(base_dir, 'users.json')
+
+    if not os.path.exists(users_path):
+        print(f"[ERROR] 用户文件不存在: {users_path}")
+        print(f"[INFO] 使用 -u 或 --users 参数指定用户文件路径")
         sys.exit(1)
 
-    return config_path
+    return users_path
 
 class AutoSignTool:
     def __init__(self, config_path=None):
@@ -35,21 +50,33 @@ class AutoSignTool:
         self.log_level = 'INFO'
         self.config = {}
         self.logger = None
+        self.users_path = get_users_path()
+        self.users = []
         self.load_config(config_path)
         self.session = requests.Session()
         self.setup_logging()
+        self.load_users()
         self.last_executed = {}
+
+    def load_users(self):
+        with open(self.users_path, 'r', encoding='utf-8') as f:
+            self.users = json.load(f)
+        self.logger.info(f"用户文件加载完成: {self.users_path}, 用户数量: {len(self.users)}")
 
     def reload_config(self):
         config_path = get_config_path()
+        self.users_path = get_users_path()
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
         self.a_config = self.config['aSystem']
         self.b_config = self.config['bSystem']
-        self.users = self.config['users']
         self.schedule = self.config.get('schedule', {})
         self.log_level = self.config.get('logLevel', 'INFO').upper()
         self.logger.setLevel(self.log_level)
+        for handler in self.logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                self.logger.removeHandler(handler)
+        self.load_users()
         self.logger.info(f"配置已重新加载，用户数量: {len(self.users)}, 配置文件: {config_path}")
 
     def is_workday(self):
@@ -70,7 +97,6 @@ class AutoSignTool:
             self.config = json.load(f)
         self.a_config = self.config['aSystem']
         self.b_config = self.config['bSystem']
-        self.users = self.config['users']
         self.schedule = self.config.get('schedule', {})
         self.log_level = self.config.get('logLevel', 'INFO').upper()
 
@@ -89,7 +115,7 @@ class AutoSignTool:
 
         console_handler = logging.StreamHandler()
         console_handler.setLevel(self.log_level)
-        console_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+        console_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         console_handler.setFormatter(console_formatter)
         self.logger.addHandler(console_handler)
 
@@ -368,7 +394,9 @@ class AutoSignTool:
 
         for idx, user in enumerate(self.users, 1):
             user_start = datetime.now()
-            self.logger.info(f"[进度] 当前: {idx}/{len(self.users)}")
+            user_start_str = user_start.strftime('%Y-%m-%d %H:%M:%S')
+            sub_acct_no = user.get('subAcctNo', 'unknown')
+            self.logger.info(f"[{user_start_str}] 用户 {sub_acct_no} 开始{action}（{idx}/{len(self.users)}）")
 
             if mode == "signin":
                 if self.process_user_sign_in(user):
@@ -456,5 +484,13 @@ class AutoSignTool:
             time.sleep(30)
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='自动签到签退工具')
+    parser.add_argument('-u', '--users', help='用户配置文件路径', default=None)
+    args = parser.parse_args()
+
+    if args.users:
+        sys.argv.extend(['-u', args.users])
+
     tool = AutoSignTool()
     tool.run_schedule()
