@@ -73,9 +73,23 @@ class AutoSignTool:
         self.schedule = self.config.get('schedule', {})
         self.log_level = self.config.get('logLevel', 'INFO').upper()
         self.logger.setLevel(self.log_level)
+
+        log_dir = self.config.get('logPath', './logs')
+        if getattr(sys, 'frozen', False):
+            log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        self.log_file = os.path.join(log_dir, f"sign_{datetime.now().strftime('%Y%m%d')}.log")
+
         for handler in self.logger.handlers[:]:
             if isinstance(handler, logging.FileHandler):
                 self.logger.removeHandler(handler)
+
+        file_handler = logging.FileHandler(self.log_file, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        file_handler.setFormatter(file_formatter)
+        self.logger.addHandler(file_handler)
+
         self.load_users()
         self.logger.info(f"配置已重新加载，用户数量: {len(self.users)}, 配置文件: {config_path}")
 
