@@ -462,13 +462,14 @@ class AutoSignTool:
         while True:
             now = datetime.now()
             current_time = now.strftime('%H:%M')
+            current_date = now.strftime('%Y-%m-%d')
 
             for task in schedules:
                 times = task.get('times', [])
                 rounds = task.get('rounds', 1)
                 task_name = task.get('name', '未命名')
                 mode = task.get('mode', 'signout')
-                task_key = f"{task_name}_{current_time}"
+                task_key = f"{task_name}_{current_date}_{current_time}"
 
                 if task_key in self.last_executed:
                     continue
