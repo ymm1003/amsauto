@@ -460,41 +460,49 @@ class AutoSignTool:
         self.logger.info(f"[INFO] 每30秒检查一次时间...\n")
 
         while True:
-            now = datetime.now()
-            current_time = now.strftime('%H:%M')
-            current_date = now.strftime('%Y-%m-%d')
+            try:
+                now = datetime.now()
+                current_time = now.strftime('%H:%M')
+                current_date = now.strftime('%Y-%m-%d')
 
-            for task in schedules:
-                times = task.get('times', [])
-                rounds = task.get('rounds', 1)
-                task_name = task.get('name', '未命名')
-                mode = task.get('mode', 'signout')
-                task_key = f"{task_name}_{current_date}_{current_time}"
+                for task in schedules:
+                    times = task.get('times', [])
+                    rounds = task.get('rounds', 1)
+                    task_name = task.get('name', '未命名')
+                    mode = task.get('mode', 'signout')
+                    task_key = f"{task_name}_{current_date}_{current_time}"
 
-                if task_key in self.last_executed:
-                    continue
+                    if task_key in self.last_executed:
+                        continue
 
-                for target_time in times:
-                    if current_time == target_time:
-                        if not self.is_workday():
-                            self.logger.info(f"跳过非工作日执行: {current_time}")
+                    for target_time in times:
+                        if current_time == target_time:
+                            if not self.is_workday():
+                                self.logger.info(f"跳过非工作日执行: {current_time}")
+                                break
+                            action = "签到" if mode == "signin" else "签退"
+                            self.reload_config()
+                            self.logger.info(f"{'='*60}")
+                            self.logger.info(f"[触发] 定时任务: {task_name}")
+                            self.logger.info(f"[触发] 触发时间: {current_time}")
+                            self.logger.info(f"[触发] 动作: {action}")
+                            self.logger.info(f"{'='*60}")
+
+                            self.last_executed[task_key] = True
+
+                            for round_num in range(1, rounds + 1):
+                                self.logger.info(f"\n>>> 第 {round_num}/{rounds} 轮开始 <<<")
+                                try:
+                                    self.run_single_round(f"第{round_num}轮", mode)
+                                except Exception as e:
+                                    self.logger.error(f"任务执行异常: {str(e)}", exc_info=True)
+                                self.logger.info(f">>> 第 {round_num}/{rounds} 轮结束 <<<\n")
+
                             break
-                        action = "签到" if mode == "signin" else "签退"
-                        self.reload_config()
-                        self.logger.info(f"{'='*60}")
-                        self.logger.info(f"[触发] 定时任务: {task_name}")
-                        self.logger.info(f"[触发] 触发时间: {current_time}")
-                        self.logger.info(f"[触发] 动作: {action}")
-                        self.logger.info(f"{'='*60}")
 
-                        self.last_executed[task_key] = True
-
-                        for round_num in range(1, rounds + 1):
-                            self.logger.info(f"\n>>> 第 {round_num}/{rounds} 轮开始 <<<")
-                            self.run_single_round(f"第{round_num}轮", mode)
-                            self.logger.info(f">>> 第 {round_num}/{rounds} 轮结束 <<<\n")
-
-                        break
+                self.logger.debug(f"[心跳] 定时监控进行中，当前时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+            except Exception as e:
+                self.logger.error(f"定时循环异常: {str(e)}", exc_info=True)
 
             time.sleep(30)
 
