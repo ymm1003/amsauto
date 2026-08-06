@@ -500,7 +500,7 @@ class AutoSignTool:
 
                             break
 
-                self.logger.debug(f"[心跳] 定时监控进行中，当前时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+                self.logger.info(f"[心跳] 定时监控进行中，当前时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
             except Exception as e:
                 self.logger.error(f"定时循环异常: {str(e)}", exc_info=True)
 
