@@ -1,7 +1,8 @@
 import requests
 import json
+import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import sys
 import logging
@@ -435,6 +436,14 @@ class AutoSignTool:
         self.logger.info(f"{'='*60}")
         return success_count, fail_count
 
+    def _shift_time(self, base_time, offset_minutes):
+        try:
+            t = datetime.strptime(base_time, '%H:%M') + timedelta(minutes=offset_minutes)
+            return t.strftime('%H:%M')
+        except Exception as e:
+            self.logger.error(f"时间偏移计算失败: {base_time}, 偏移: {offset_minutes}, 错误: {str(e)}")
+            return base_time
+
     def run_schedule(self):
         self.logger.info(f"{'='*60}")
         self.logger.info(f"自动签到签退工具启动（定时模式）")
@@ -457,7 +466,10 @@ class AutoSignTool:
             self.logger.info(f"  - 执行轮数: {rounds}")
 
         self.logger.info(f"[INFO] 定时监控已启动，按 Ctrl+C 停止")
-        self.logger.info(f"[INFO] 每30秒检查一次时间...\n")
+        self.logger.info(f"[INFO] 每30秒检查一次时间...")
+        self.logger.info(f"[INFO] 每天执行时间会在配置时间基础上随机向后偏移5-10分钟\n")
+
+        daily_times = {}
 
         while True:
             try:
@@ -465,8 +477,21 @@ class AutoSignTool:
                 current_time = now.strftime('%H:%M')
                 current_date = now.strftime('%Y-%m-%d')
 
+                if daily_times.get('date') != current_date:
+                    daily_times = {'date': current_date}
+                    for task in schedules:
+                        task_name = task.get('name', '未命名')
+                        base_times = task.get('times', [])
+                        randomized = []
+                        for base in base_times:
+                            offset = random.randint(5, 10)
+                            t = self._shift_time(base, offset)
+                            randomized.append(t)
+                            self.logger.info(f"[当日排程] {current_date} {task_name} 配置时间 {base} 随机偏移 {offset:+d} 分钟 -> 实际执行 {t}")
+                        daily_times[task_name] = randomized
+
                 for task in schedules:
-                    times = task.get('times', [])
+                    times = daily_times.get(task.get('name', '未命名'), [])
                     rounds = task.get('rounds', 1)
                     task_name = task.get('name', '未命名')
                     mode = task.get('mode', 'signout')
@@ -484,7 +509,7 @@ class AutoSignTool:
                             self.reload_config()
                             self.logger.info(f"{'='*60}")
                             self.logger.info(f"[触发] 定时任务: {task_name}")
-                            self.logger.info(f"[触发] 触发时间: {current_time}")
+                            self.logger.info(f"[触发] 实际触发时间: {current_time}")
                             self.logger.info(f"[触发] 动作: {action}")
                             self.logger.info(f"{'='*60}")
 
