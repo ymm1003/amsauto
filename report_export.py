@@ -471,7 +471,7 @@ class ReportExportTool(AutoSignTool):
         html_all = self._generate_html(all_rows, f"需求报工完成分析@{date_str}", stats={
             "需求总数": len(all_rows) - 1,
             "匹配子任务行": matched_rows,
-            "未匹配工单行": (len(all_rows) - 1) - matched_rows,
+            "未找到子任务需求数量": (len(all_rows) - 1) - matched_rows,
         })
         html_all_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}.html")
         with open(html_all_path, 'w', encoding='utf-8') as f:
