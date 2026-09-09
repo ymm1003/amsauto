@@ -371,8 +371,15 @@ class ReportExportTool(AutoSignTool):
             self.logger.error("未安装openpyxl，无法执行合并")
             return None
 
-        ORDER_COLS = ['A', 'B', 'F', 'G', 'H', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'T', 'U',
-                      'AA', 'AB', 'AA-AB', 'AF', 'AG']
+        # 列顺序: 需求名称/厂商需求负责人/开发工作量/报工时长/剩余工作量/到达集成商时间/实际上线时间 + 子任务4列放前面，其它列放最后
+        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',)
+        FRONT_COLS = [('order', 'G'), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
+                      ('diff',), ('order', 'AF'), ('order', 'AG'),
+                      ('sub', 0), ('sub', 1), ('sub', 2), ('sub', 3)]
+        BACK_COLS = [('order', c) for c in ['A', 'B', 'F', 'H', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U']]
+        ORDER_COLS = FRONT_COLS + BACK_COLS
+        # 子任务文件位置索引: 开发子任务名称=3, 流程状态=4, 产品线=5, 开发人员=6
+        SUBTASK_FIELD_IDX = {0: 3, 1: 4, 2: 5, 3: 6}
         ORDER_KEYWORD_COL = 'R'
         KEYWORD = '思特奇'
 
@@ -398,13 +405,13 @@ class ReportExportTool(AutoSignTool):
         subtask_header = subtask_data[0]
 
         merged_header = []
-        for c in ORDER_COLS:
-            if c == 'AA-AB':
+        for col in ORDER_COLS:
+            if col[0] == 'diff':
                 merged_header.append("剩余工作量（人天）")
+            elif col[0] == 'sub':
+                merged_header.append(subtask_header[SUBTASK_FIELD_IDX[col[1]]])
             else:
-                merged_header.append(order_header[self._col_num(c) - 1])
-        for c in ['D', 'E', 'F', 'G']:
-            merged_header.append(subtask_header[self._col_num(c) - 1])
+                merged_header.append(order_header[self._col_num(col[1]) - 1])
         ws.append(merged_header)
         all_rows.append(merged_header)
 
@@ -437,11 +444,13 @@ class ReportExportTool(AutoSignTool):
             diff = aa - ab if (aa is not None and ab is not None) else None
 
             out = []
-            for c in ORDER_COLS:
-                if c == 'AA-AB':
+            for col in ORDER_COLS:
+                if col[0] == 'diff':
                     out.append(diff)
+                elif col[0] == 'sub':
+                    out.append(None)
                 else:
-                    out.append(cell(self._col_num(c) - 1))
+                    out.append(cell(self._col_num(col[1]) - 1))
 
             g_name = str(cell(g_col) or '').strip()
             sub_rows = subtask_map.get(g_name, [])
@@ -449,12 +458,15 @@ class ReportExportTool(AutoSignTool):
             if sub_rows:
                 matched_orders += 1
                 for srow in sub_rows:
-                    data_row = out + [srow[self._col_num(c) - 1] for c in ['D', 'E', 'F', 'G']]
+                    for i, col in enumerate(FRONT_COLS):
+                        if col[0] == 'sub':
+                            out[i] = srow[SUBTASK_FIELD_IDX[col[1]]]
+                    data_row = list(out)
                     ws.append(data_row)
                     all_rows.append(data_row)
                     matched_rows += 1
             else:
-                data_row = out + [None, None, None, None]
+                data_row = list(out)
                 ws.append(data_row)
                 all_rows.append(data_row)
 
@@ -515,7 +527,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 1, "product": 21, "vendor_owner": 12, "dev_person": 22, "remain": 16}'
+        col_idx_json = '{"month": 12, "product": 9, "vendor_owner": 1, "dev_person": 10, "remain": 4}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -666,7 +678,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(B=1,归并年月,空=未排期), 产品线(V=21), 厂商需求负责人(N=13列即idx12), 开发人员(子任务G列idx22)"""
+        """从明细数据提取下拉选项: 排期月份(idx12,归并年月,空=未排期), 产品线(idx9), 厂商需求负责人(idx1), 开发人员(idx10)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -682,10 +694,10 @@ document.getElementById('cnt').textContent = {len(body_rows)};
                 for v in sorted(vals, reverse=True)
             )
 
-        month_opts = collect(1, '未排期', transform=self._to_ym)
-        product_opts = collect(21, '')
-        vendor_opts = collect(12)
-        dev_opts = collect(22)
+        month_opts = collect(12, '未排期', transform=self._to_ym)
+        product_opts = collect(9, '')
+        vendor_opts = collect(1)
+        dev_opts = collect(10)
         return (month_opts, product_opts, vendor_opts, dev_opts)
 
     @staticmethod
@@ -698,13 +710,13 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             return None
 
     def _build_summary_html(self, body_rows):
-        """按B列(排期月份,空不统计)归并到年月分组，组内按V列(产品线)细分，汇总O/P/Q三列求和"""
+        """按排期月份(idx12,空不统计)归并到年月分组，组内按产品线(idx9)细分，汇总开发工作量/报工时长/剩余工作量(idx2/3/4)求和"""
         import html as html_mod
 
         def esc(v):
             return html_mod.escape(str(v)) if v is not None else ''
 
-        IDX_B, IDX_O, IDX_P, IDX_Q, IDX_V = 1, 14, 15, 16, 21
+        IDX_B, IDX_O, IDX_P, IDX_Q, IDX_V = 12, 2, 3, 4, 9
 
         def fmt(v):
             if v is None:
