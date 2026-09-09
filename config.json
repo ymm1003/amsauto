@@ -20,6 +20,23 @@
     ],
     "logLevel": "INFO",
     "logPath": "./logs",
+    "reportExport": {
+        "exportUser": "yanmm",
+        "savePath": "./export",
+        "usersFile": "./users.json",
+        "dateRangeDays": 30,
+        "times": ["08:00"],
+        "tasks": [
+            {
+                "type": "demandrepairorder",
+                "name": "工单汇总查询结果"
+            },
+            {
+                "type": "developsubtask",
+                "name": "开发子任务查询结果"
+            }
+        ]
+    },
     "schedule": {
         "tasks": [
             {

@@ -1,0 +1,55 @@
+name: Build ReportExportTool
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'report_export.py'
+      - 'sign_tool.py'
+      - 'config.json'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+          architecture: 'x86'
+
+      - run: pip install pyinstaller requests
+
+      - run: pyinstaller --onefile --name "ReportExportTool" --noupx report_export.py
+
+      - run: cp config.json dist/
+      - run: cp users.json dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReportExportTool-Win32
+          path: dist/
+
+  build-kylin:
+    runs-on: self-hosted
+    tags: [aarch64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - run: pip install pyinstaller requests
+
+      - run: pyinstaller --onefile --name "ReportExportTool" report_export.py
+
+      - run: cp config.json dist/
+      - run: cp users.json dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReportExportTool-Kylin
+          path: dist/

@@ -1,0 +1,53 @@
+name: Build AutoSignTool
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'sign_tool.py'
+      - 'sign_tool.spec'
+      - 'config.json'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+          architecture: 'x86'
+
+      - run: pip install pyinstaller requests
+
+      - run: pyinstaller --onefile --name "AutoSignTool" --noupx sign_tool.py
+
+      - run: cp config.json dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoSignTool-Win32
+          path: dist/
+
+  build-kylin:
+    runs-on: self-hosted
+    tags: [aarch64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - run: pip install pyinstaller requests
+
+      - run: pyinstaller --onefile --name "AutoSignTool" sign_tool.py
+
+      - run: cp config.json dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoSignTool-Kylin
+          path: dist/
