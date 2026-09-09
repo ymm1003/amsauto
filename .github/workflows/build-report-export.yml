@@ -24,31 +24,10 @@ jobs:
 
       - run: pyinstaller --onefile --name "ReportExportTool" --noupx report_export.py
 
-      - run: cp config.json dist/
-      - run: cp users.json dist/
+      - run: copy config.json dist\
+      - run: copy users.json dist\
 
       - uses: actions/upload-artifact@v4
         with:
           name: ReportExportTool-Win32
-          path: dist/
-
-  build-kylin:
-    runs-on: [self-hosted, aarch64]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.8'
-
-      - run: pip install pyinstaller requests
-
-      - run: pyinstaller --onefile --name "ReportExportTool" report_export.py
-
-      - run: cp config.json dist/
-      - run: cp users.json dist/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ReportExportTool-Kylin
           path: dist/
