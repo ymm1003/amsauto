@@ -81,6 +81,10 @@ class ReportExportTool(AutoSignTool):
                 continue
         raise ValueError(f"无法解析文件编码: {file_path}")
 
+    def load_users(self):
+        self.users = self._read_json_file(self.users_path)
+        self.logger.info(f"用户文件加载完成: {self.users_path}, 用户数量: {len(self.users)}")
+
     def load_config(self, config_path):
         self.logger = logging.getLogger('ReportExportTool')
         self.logger.setLevel(logging.DEBUG)
