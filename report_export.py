@@ -392,6 +392,9 @@ class ReportExportTool(AutoSignTool):
         ws = wb.active
         ws.title = "工单与子任务合并"
 
+        all_rows = []
+        matched_only_rows = []
+
         order_header = order_data[0]
         subtask_header = subtask_data[0]
 
@@ -404,6 +407,8 @@ class ReportExportTool(AutoSignTool):
         for c in ['D', 'E', 'F', 'G']:
             merged_header.append(subtask_header[self._col_num(c) - 1])
         ws.append(merged_header)
+        all_rows.append(merged_header)
+        matched_only_rows.append(merged_header)
 
         g_col = self._col_num('G') - 1
         r_col = self._col_num(ORDER_KEYWORD_COL) - 1
@@ -446,20 +451,133 @@ class ReportExportTool(AutoSignTool):
             if sub_rows:
                 matched_orders += 1
                 for srow in sub_rows:
-                    ws.append(out + [srow[self._col_num(c) - 1] for c in ['D', 'E', 'F', 'G']])
+                    data_row = out + [srow[self._col_num(c) - 1] for c in ['D', 'E', 'F', 'G']]
+                    ws.append(data_row)
+                    all_rows.append(data_row)
+                    matched_only_rows.append(data_row)
                     matched_rows += 1
             else:
-                ws.append(out + [None, None, None, None])
+                data_row = out + [None, None, None, None]
+                ws.append(data_row)
+                all_rows.append(data_row)
 
         save_dir = self.export_config.get('savePath', './export')
         if not os.path.isabs(save_dir):
             save_dir = os.path.join(self._get_base_dir(), save_dir)
         os.makedirs(save_dir, exist_ok=True)
-        merged_path = os.path.join(save_dir, f"需求报工完成分析@{datetime.now().strftime('%Y%m%d')}.xlsx")
+        date_str = datetime.now().strftime('%Y%m%d')
+        merged_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}.xlsx")
         wb.save(merged_path)
 
         self.logger.info(f"合并统计: 思特奇工单 {matched_orders} 条(不重复需求), 匹配子任务 {matched_rows} 行写入")
+
+        html_all = self._generate_html(all_rows, f"需求报工完成分析@{date_str}", stats={
+            "工单总数(含多子任务展开)": len(all_rows) - 1,
+            "匹配子任务行": matched_rows,
+            "未匹配工单行": (len(all_rows) - 1) - matched_rows,
+        })
+        html_matched = self._generate_html(matched_only_rows, f"需求报工完成分析@{date_str}(仅匹配)", stats={
+            "匹配需求(工单)": matched_orders,
+            "匹配子任务行": matched_rows,
+        })
+        html_all_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}.html")
+        html_matched_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}(仅匹配).html")
+        with open(html_all_path, 'w', encoding='utf-8') as f:
+            f.write(html_all)
+        with open(html_matched_path, 'w', encoding='utf-8') as f:
+            f.write(html_matched)
+        self.logger.info(f"HTML已生成: {html_all_path}")
+        self.logger.info(f"HTML已生成: {html_matched_path}")
+
         return merged_path
+
+    def _generate_html(self, rows, title, stats=None):
+        import html as html_mod
+
+        def esc(v):
+            if v is None:
+                return ''
+            return html_mod.escape(str(v))
+
+        header = rows[0] if rows else []
+        body_rows = rows[1:] if rows else []
+
+        stat_html = ''
+        if stats:
+            items = ''.join(
+                f'<div class="stat"><span class="num">{v}</span><span class="label">{esc(k)}</span></div>'
+                for k, v in stats.items()
+            )
+            stat_html = f'<div class="stats">{items}</div>'
+
+        th = ''.join(f'<th>{esc(h)}</th>' for h in header)
+        trs = []
+        for row in body_rows:
+            tds = []
+            for i, v in enumerate(row):
+                if v is None or v == '':
+                    tds.append('<td class="empty">-</td>')
+                else:
+                    css = ' num-cell' if isinstance(v, (int, float)) else ''
+                    tds.append(f'<td class="{css.strip()}">{esc(v)}</td>')
+            trs.append('<tr>' + ''.join(tds) + '</tr>')
+        table_body = '\n'.join(trs)
+
+        return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>{esc(title)}</title>
+<style>
+* {{ box-sizing: border-box; }}
+body {{ font-family: "Microsoft YaHei", "PingFang SC", sans-serif; margin: 0; background: #f5f7fa; color: #333; }}
+.container {{ padding: 20px; }}
+h1 {{ font-size: 20px; margin: 0 0 12px; }}
+.stats {{ display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }}
+.stat {{ background: #fff; border-radius: 8px; padding: 10px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }}
+.stat .num {{ font-size: 22px; font-weight: bold; color: #1677ff; margin-right: 8px; }}
+.stat .label {{ font-size: 13px; color: #666; }}
+.table-wrap {{ background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: auto; max-height: calc(100vh - 140px); }}
+table {{ border-collapse: collapse; font-size: 12px; white-space: nowrap; }}
+th {{ position: sticky; top: 0; background: #1677ff; color: #fff; padding: 8px 10px; text-align: left; z-index: 2; }}
+td {{ padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }}
+tr:hover td {{ background: #e6f4ff; }}
+td.empty {{ color: #ccc; text-align: center; }}
+td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
+.search-bar {{ margin-bottom: 12px; }}
+.search-bar input {{ width: 320px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }}
+.search-bar input:focus {{ outline: none; border-color: #1677ff; }}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>{esc(title)}</h1>
+{stat_html}
+<div class="search-bar"><input type="text" id="kw" placeholder="输入关键字过滤..." oninput="filterRows(this.value)"></div>
+<div class="table-wrap">
+<table id="tbl">
+<thead><tr>{th}</tr></thead>
+<tbody>
+{table_body}
+</tbody>
+</table>
+</div>
+</div>
+<script>
+function filterRows(kw) {{
+  kw = kw.trim().toLowerCase();
+  const rows = document.querySelectorAll('#tbl tbody tr');
+  let visible = 0;
+  rows.forEach(r => {{
+    const show = !kw || r.textContent.toLowerCase().includes(kw);
+    r.style.display = show ? '' : 'none';
+    if (show) visible++;
+  }});
+  document.getElementById('cnt').textContent = visible;
+}}
+</script>
+</body>
+</html>"""
 
     @staticmethod
     def _to_num(v):
