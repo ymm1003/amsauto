@@ -398,7 +398,7 @@ class ReportExportTool(AutoSignTool):
         merged_header = []
         for c in ORDER_COLS:
             if c == 'AA-AB':
-                merged_header.append(f"{order_header[26]}-{order_header[27]}")
+                merged_header.append("剩余工作量（人天）")
             else:
                 merged_header.append(order_header[self._col_num(c) - 1])
         for c in ['D', 'E', 'F', 'G']:
