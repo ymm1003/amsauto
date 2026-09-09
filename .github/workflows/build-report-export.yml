@@ -33,8 +33,7 @@ jobs:
           path: dist/
 
   build-kylin:
-    runs-on: self-hosted
-    tags: [aarch64]
+    runs-on: [self-hosted, aarch64]
     steps:
       - uses: actions/checkout@v4
 
