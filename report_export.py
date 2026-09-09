@@ -20,13 +20,14 @@ warnings.filterwarnings('ignore')
 
 
 class ReportExportTool(AutoSignTool):
-    def __init__(self, config_path=None):
+    def __init__(self, config_path=None, users_path=None):
         if config_path is None:
             config_path = self.get_config_path()
         self.log_file = None
         self.log_level = 'INFO'
         self.config = {}
         self.logger = None
+        self._users_path_override = users_path
         self.users_path = self._get_users_path()
         self.users = []
         self.load_config(config_path)
@@ -35,31 +36,40 @@ class ReportExportTool(AutoSignTool):
         self.load_users()
         self.last_executed = {}
 
+    def _get_base_dir(self):
+        if getattr(sys, 'frozen', False):
+            return os.path.dirname(sys.executable)
+        return os.path.dirname(os.path.abspath(__file__))
+
     def _get_users_path(self):
+        if getattr(self, '_users_path_override', None):
+            return self._users_path_override
+
         for i, arg in enumerate(sys.argv):
             if arg in ['-u', '--users'] and i + 1 < len(sys.argv):
                 return sys.argv[i + 1]
-        users_file = self.export_config.get('usersFile') if hasattr(self, 'export_config') else None
-        if users_file:
-            base_dir = os.path.dirname(self.get_config_path())
-            users_path = users_file if os.path.isabs(users_file) else os.path.join(base_dir, users_file)
-            if os.path.exists(users_path):
-                return users_path
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(base_dir, 'users.json')
+
+        users_path = os.path.join(self._get_base_dir(), 'users.json')
+
+        if not os.path.exists(users_path):
+            print(f"[ERROR] 用户文件不存在: {users_path}")
+            print(f"[INFO] 使用 -u 或 --users 参数指定用户文件路径")
+            sys.exit(1)
+
+        return users_path
 
     def get_config_path(self):
         for i, arg in enumerate(sys.argv):
             if arg in ['-c', '--config'] and i + 1 < len(sys.argv):
                 return sys.argv[i + 1]
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(base_dir, 'config.json')
+
+        config_path = os.path.join(self._get_base_dir(), 'config.json')
+
+        if not os.path.exists(config_path):
+            print(f"[ERROR] 配置文件不存在: {config_path}")
+            sys.exit(1)
+
+        return config_path
 
     def load_config(self, config_path):
         self.logger = logging.getLogger('ReportExportTool')
@@ -76,8 +86,8 @@ class ReportExportTool(AutoSignTool):
 
     def setup_logging(self):
         log_dir = self.config.get('logPath', './logs')
-        if getattr(sys, 'frozen', False):
-            log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
+        if not os.path.isabs(log_dir):
+            log_dir = os.path.join(self._get_base_dir(), log_dir)
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, f"report_{datetime.now().strftime('%Y%m%d')}.log")
 
@@ -110,8 +120,8 @@ class ReportExportTool(AutoSignTool):
         self.logger.setLevel(self.log_level)
 
         log_dir = self.config.get('logPath', './logs')
-        if getattr(sys, 'frozen', False):
-            log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
+        if not os.path.isabs(log_dir):
+            log_dir = os.path.join(self._get_base_dir(), log_dir)
         os.makedirs(log_dir, exist_ok=True)
         new_log_file = os.path.join(log_dir, f"report_{datetime.now().strftime('%Y%m%d')}.log")
 
@@ -262,8 +272,8 @@ class ReportExportTool(AutoSignTool):
                 return None
 
             save_dir = self.export_config.get('savePath', './export')
-            if getattr(sys, 'frozen', False):
-                save_dir = os.path.join(os.path.dirname(sys.executable), os.path.basename(save_dir))
+            if not os.path.isabs(save_dir):
+                save_dir = os.path.join(self._get_base_dir(), save_dir)
             os.makedirs(save_dir, exist_ok=True)
 
             original_name = file_name
@@ -395,10 +405,7 @@ def main():
     parser.add_argument('--now', action='store_true', help='立即执行一次导出')
     args = parser.parse_args()
 
-    if args.users:
-        sys.argv.extend(['-u', args.users])
-
-    tool = ReportExportTool(config_path=args.config)
+    tool = ReportExportTool(config_path=args.config, users_path=args.users)
     if args.now:
         tool.logger.info("立即执行一次导出测试")
         tool.run_export()

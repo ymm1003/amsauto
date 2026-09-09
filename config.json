@@ -23,7 +23,6 @@
     "reportExport": {
         "exportUser": "yanmm",
         "savePath": "./export",
-        "usersFile": "./users.json",
         "dateRangeDays": 30,
         "times": ["08:00"],
         "tasks": [
