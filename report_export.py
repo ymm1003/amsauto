@@ -469,7 +469,7 @@ class ReportExportTool(AutoSignTool):
         self.logger.info(f"合并统计: 思特奇工单 {matched_orders} 条(不重复需求), 匹配子任务 {matched_rows} 行写入")
 
         html_all = self._generate_html(all_rows, f"需求报工完成分析@{date_str}", stats={
-            "工单总数(含多子任务展开)": len(all_rows) - 1,
+            "需求总数": len(all_rows) - 1,
             "匹配子任务行": matched_rows,
             "未匹配工单行": (len(all_rows) - 1) - matched_rows,
         })
