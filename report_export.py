@@ -393,7 +393,6 @@ class ReportExportTool(AutoSignTool):
         ws.title = "工单与子任务合并"
 
         all_rows = []
-        matched_only_rows = []
 
         order_header = order_data[0]
         subtask_header = subtask_data[0]
@@ -408,7 +407,6 @@ class ReportExportTool(AutoSignTool):
             merged_header.append(subtask_header[self._col_num(c) - 1])
         ws.append(merged_header)
         all_rows.append(merged_header)
-        matched_only_rows.append(merged_header)
 
         g_col = self._col_num('G') - 1
         r_col = self._col_num(ORDER_KEYWORD_COL) - 1
@@ -454,7 +452,6 @@ class ReportExportTool(AutoSignTool):
                     data_row = out + [srow[self._col_num(c) - 1] for c in ['D', 'E', 'F', 'G']]
                     ws.append(data_row)
                     all_rows.append(data_row)
-                    matched_only_rows.append(data_row)
                     matched_rows += 1
             else:
                 data_row = out + [None, None, None, None]
@@ -476,18 +473,10 @@ class ReportExportTool(AutoSignTool):
             "匹配子任务行": matched_rows,
             "未匹配工单行": (len(all_rows) - 1) - matched_rows,
         })
-        html_matched = self._generate_html(matched_only_rows, f"需求报工完成分析@{date_str}(仅匹配)", stats={
-            "匹配需求(工单)": matched_orders,
-            "匹配子任务行": matched_rows,
-        })
         html_all_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}.html")
-        html_matched_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}(仅匹配).html")
         with open(html_all_path, 'w', encoding='utf-8') as f:
             f.write(html_all)
-        with open(html_matched_path, 'w', encoding='utf-8') as f:
-            f.write(html_matched)
         self.logger.info(f"HTML已生成: {html_all_path}")
-        self.logger.info(f"HTML已生成: {html_matched_path}")
 
         return merged_path
 
