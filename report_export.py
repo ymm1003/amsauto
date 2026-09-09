@@ -570,7 +570,6 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 {summary_html}
 <div class="search-bar">
 <input type="text" id="kw" placeholder="输入关键字过滤..." oninput="applyFilters()">
-<button class="btn" id="btn-month" onclick="toggleMonth(this)">未排期月份</button>
 <button class="btn" id="btn-remain" onclick="toggleRemain(this)">报工未完成(剩余&gt;0)</button>
 <select id="f-month" onchange="applyFilters()"><option value="">排期月份: 全部</option>{col_options[0]}</select>
 <select id="f-product" onchange="applyFilters()"><option value="">产品线: 全部</option>{col_options[1]}</select>
@@ -589,13 +588,8 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 </div>
 <script>
 const IDX = {col_idx_json};
-let monthBtnActive = false, remainBtnActive = false;
+let remainBtnActive = false;
 
-function toggleMonth(btn) {{
-  monthBtnActive = !monthBtnActive;
-  btn.classList.toggle('active', monthBtnActive);
-  applyFilters();
-}}
 function toggleRemain(btn) {{
   remainBtnActive = !remainBtnActive;
   btn.classList.toggle('active', remainBtnActive);
@@ -624,11 +618,6 @@ function applyFilters() {{
   rows.forEach(r => {{
     const cells = r.children;
     const showKw = !kw || r.textContent.toLowerCase().includes(kw);
-    let showMonth = true;
-    if (monthBtnActive) {{
-      const mv = cells[IDX.month] ? cells[IDX.month].textContent.trim() : '';
-      showMonth = mv === '' || mv === '-';
-    }}
     let showMonthSel = true;
     if (monthSel) {{
       const mv = cells[IDX.month] ? cells[IDX.month].textContent.trim() : '';
@@ -650,7 +639,7 @@ function applyFilters() {{
     const showVendor = !vendor || vv === vendor || (vendor === '(空)' && (vv === '' || vv === '-'));
     const dv = cells[IDX.dev_person] ? cells[IDX.dev_person].textContent.trim() : '';
     const showDev = !dev || dv === dev || (dev === '(空)' && (dv === '' || dv === '-'));
-    const show = showKw && showMonth && showMonthSel && showRemain && showProduct && showVendor && showDev;
+    const show = showKw && showMonthSel && showRemain && showProduct && showVendor && showDev;
     r.style.display = show ? '' : 'none';
     if (show) visible++;
   }});
