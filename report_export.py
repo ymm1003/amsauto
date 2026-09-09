@@ -499,6 +499,8 @@ class ReportExportTool(AutoSignTool):
             )
             stat_html = f'<div class="stats">{items}</div>'
 
+        summary_html = self._build_summary_html(body_rows)
+
         th = ''.join(f'<th>{esc(h)}</th>' for h in header)
         trs = []
         for row in body_rows:
@@ -536,12 +538,21 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 .search-bar {{ margin-bottom: 12px; }}
 .search-bar input {{ width: 320px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }}
 .search-bar input:focus {{ outline: none; border-color: #1677ff; }}
+.summary {{ background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; overflow: auto; }}
+.summary h2 {{ font-size: 15px; margin: 0; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }}
+.summary table {{ width: 100%; }}
+.summary th {{ position: static; background: #fafafa; color: #333; }}
+.summary tr:hover td {{ background: #e6f4ff; }}
+.summary td {{ text-align: right; font-family: Consolas, monospace; }}
+.summary td:first-child, .summary td:nth-child(2) {{ text-align: left; font-family: inherit; }}
+.summary .subtotal td {{ background: #f0f7ff; font-weight: bold; border-top: 2px solid #1677ff; }}
 </style>
 </head>
 <body>
 <div class="container">
 <h1>{esc(title)}</h1>
 {stat_html}
+{summary_html}
 <div class="search-bar"><input type="text" id="kw" placeholder="输入关键字过滤..." oninput="filterRows(this.value)"></div>
 <div class="table-wrap">
 <table id="tbl">
@@ -576,6 +587,63 @@ function filterRows(kw) {{
             return float(str(v).strip())
         except (ValueError, TypeError):
             return None
+
+    def _build_summary_html(self, body_rows):
+        """按B列(排期月份,空不统计)分组，组内按V列(产品线)细分，汇总O/P/Q三列求和"""
+        import html as html_mod
+
+        def esc(v):
+            return html_mod.escape(str(v)) if v is not None else ''
+
+        IDX_B, IDX_O, IDX_P, IDX_Q, IDX_V = 1, 14, 15, 16, 21
+
+        def fmt(v):
+            if v is None:
+                return '-'
+            if isinstance(v, float) and v == int(v):
+                return str(int(v))
+            return f"{v:.2f}".rstrip('0').rstrip('.')
+
+        groups = {}
+        for row in body_rows:
+            month = row[IDX_B] if IDX_B < len(row) else None
+            if month is None or str(month).strip() == '':
+                continue
+            month = str(month).strip()
+            product = row[IDX_V] if IDX_V < len(row) else None
+            product = str(product).strip() if product and str(product).strip() else '(未知)'
+
+            def num(idx):
+                v = row[idx] if idx < len(row) else None
+                return self._to_num(v) or 0.0
+
+            g = groups.setdefault(month, {})
+            s = g.setdefault(product, [0.0, 0.0, 0.0, 0])
+            s[0] += num(IDX_O)
+            s[1] += num(IDX_P)
+            s[2] += num(IDX_Q)
+            s[3] += 1
+
+        if not groups:
+            return ''
+
+        parts = ['<div class="summary"><h2>按排期月份×产品线 汇总分析</h2><table>',
+                 '<thead><tr><th>排期月份</th><th>产品线</th><th>需求数</th>'
+                 '<th>开发工作量(人天)</th><th>报工时长(人天)</th><th>剩余工作量(人天)</th></tr></thead><tbody>']
+
+        for month in sorted(groups.keys()):
+            prods = groups[month]
+            subtotal = [0.0, 0.0, 0.0, 0]
+            for product in sorted(prods.keys()):
+                o, p, q, n = prods[product]
+                subtotal[0] += o; subtotal[1] += p; subtotal[2] += q; subtotal[3] += n
+                parts.append(f'<tr><td>{esc(month)}</td><td>{esc(product)}</td><td>{n}</td>'
+                             f'<td>{fmt(o)}</td><td>{fmt(p)}</td><td>{fmt(q)}</td></tr>')
+            parts.append(f'<tr class="subtotal"><td>{esc(month)}</td><td>小计</td><td>{subtotal[3]}</td>'
+                         f'<td>{fmt(subtotal[0])}</td><td>{fmt(subtotal[1])}</td><td>{fmt(subtotal[2])}</td></tr>')
+
+        parts.append('</tbody></table></div>')
+        return '\n'.join(parts)
 
     def _read_xlsx_rows(self, file_path, all_sheets=False):
         try:
