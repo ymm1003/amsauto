@@ -442,8 +442,6 @@ class ReportExportTool(AutoSignTool):
 
             g_name = str(cell(g_col) or '').strip()
             sub_rows = subtask_map.get(g_name, [])
-            if not sub_rows and g_name.endswith('-需求子任务'):
-                sub_rows = subtask_map.get(g_name[:-len('-需求子任务')].strip(), [])
 
             if sub_rows:
                 matched_orders += 1
@@ -457,7 +455,7 @@ class ReportExportTool(AutoSignTool):
         if not os.path.isabs(save_dir):
             save_dir = os.path.join(self._get_base_dir(), save_dir)
         os.makedirs(save_dir, exist_ok=True)
-        merged_path = os.path.join(save_dir, f"需求报工完成分析@{datetime.now().strftime('%Y%m')}.xlsx")
+        merged_path = os.path.join(save_dir, f"需求报工完成分析@{datetime.now().strftime('%Y%m%d')}.xlsx")
         wb.save(merged_path)
 
         self.logger.info(f"合并统计: 思特奇工单 {matched_orders} 条(不重复需求), 匹配子任务 {matched_rows} 行写入")
