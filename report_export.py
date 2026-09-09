@@ -543,11 +543,11 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 .summary table {{ width: 100%; table-layout: fixed; }}
 .summary th {{ position: static; background: #fafafa; color: #333; text-align: center; }}
 .summary th:nth-child(1), .summary td:nth-child(1) {{ width: 12%; text-align: center; }}
-.summary th:nth-child(2), .summary td:nth-child(2) {{ width: 30%; text-align: left; font-family: inherit; white-space: normal; word-break: break-all; }}
-.summary th:nth-child(3), .summary td:nth-child(3) {{ width: 12%; text-align: right; }}
-.summary th:nth-child(4), .summary td:nth-child(4) {{ width: 16%; text-align: right; }}
-.summary th:nth-child(5), .summary td:nth-child(5) {{ width: 15%; text-align: right; }}
-.summary th:nth-child(6), .summary td:nth-child(6) {{ width: 15%; text-align: right; }}
+.summary th:nth-child(2), .summary td:nth-child(2) {{ width: 18%; text-align: left; font-family: inherit; white-space: normal; word-break: break-all; }}
+.summary th:nth-child(3), .summary td:nth-child(3) {{ width: 14%; text-align: right; }}
+.summary th:nth-child(4), .summary td:nth-child(4) {{ width: 19%; text-align: right; }}
+.summary th:nth-child(5), .summary td:nth-child(5) {{ width: 18%; text-align: right; }}
+.summary th:nth-child(6), .summary td:nth-child(6) {{ width: 19%; text-align: right; }}
 .summary tr:hover td {{ background: #e6f4ff; }}
 .summary td {{ padding: 6px 10px; border-bottom: 1px solid #f0f0f0; font-family: Consolas, monospace; white-space: nowrap; }}
 .summary td:nth-child(2) {{ white-space: normal; font-family: inherit; }}
