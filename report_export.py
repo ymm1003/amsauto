@@ -540,12 +540,19 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 .search-bar input:focus {{ outline: none; border-color: #1677ff; }}
 .summary {{ background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; overflow: auto; }}
 .summary h2 {{ font-size: 15px; margin: 0; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }}
-.summary table {{ width: 100%; }}
-.summary th {{ position: static; background: #fafafa; color: #333; }}
+.summary table {{ width: 100%; table-layout: fixed; }}
+.summary th {{ position: static; background: #fafafa; color: #333; text-align: center; }}
+.summary th:nth-child(1), .summary td:nth-child(1) {{ width: 12%; text-align: center; }}
+.summary th:nth-child(2), .summary td:nth-child(2) {{ width: 30%; text-align: left; font-family: inherit; white-space: normal; word-break: break-all; }}
+.summary th:nth-child(3), .summary td:nth-child(3) {{ width: 12%; text-align: right; }}
+.summary th:nth-child(4), .summary td:nth-child(4) {{ width: 16%; text-align: right; }}
+.summary th:nth-child(5), .summary td:nth-child(5) {{ width: 15%; text-align: right; }}
+.summary th:nth-child(6), .summary td:nth-child(6) {{ width: 15%; text-align: right; }}
 .summary tr:hover td {{ background: #e6f4ff; }}
-.summary td {{ text-align: right; font-family: Consolas, monospace; }}
-.summary td:first-child, .summary td:nth-child(2) {{ text-align: left; font-family: inherit; }}
+.summary td {{ padding: 6px 10px; border-bottom: 1px solid #f0f0f0; font-family: Consolas, monospace; white-space: nowrap; }}
+.summary td:nth-child(2) {{ white-space: normal; font-family: inherit; }}
 .summary .subtotal td {{ background: #f0f7ff; font-weight: bold; border-top: 2px solid #1677ff; }}
+.summary .no-subtask td:nth-child(2) {{ color: #e6a23c; }}
 </style>
 </head>
 <body>
@@ -626,7 +633,8 @@ function filterRows(kw) {{
                 continue
             ym = to_ym(month)
             product = row[IDX_V] if IDX_V < len(row) else None
-            product = str(product).strip() if product and str(product).strip() else '(未知)'
+            if not product or not str(product).strip():
+                product = '未找到子任务'
 
             def num(idx):
                 v = row[idx] if idx < len(row) else None
@@ -652,7 +660,8 @@ function filterRows(kw) {{
             for product in sorted(prods.keys()):
                 o, p, q, n = prods[product]
                 subtotal[0] += o; subtotal[1] += p; subtotal[2] += q; subtotal[3] += n
-                parts.append(f'<tr><td>{esc(month)}</td><td>{esc(product)}</td><td>{n}</td>'
+                cls = ' class="no-subtask"' if product == '未找到子任务' else ''
+                parts.append(f'<tr{cls}><td>{esc(month)}</td><td>{esc(product)}</td><td>{n}</td>'
                              f'<td>{fmt(o)}</td><td>{fmt(p)}</td><td>{fmt(q)}</td></tr>')
             parts.append(f'<tr class="subtotal"><td>{esc(month)}</td><td>小计</td><td>{subtotal[3]}</td>'
                          f'<td>{fmt(subtotal[0])}</td><td>{fmt(subtotal[1])}</td><td>{fmt(subtotal[2])}</td></tr>')
