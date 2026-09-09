@@ -589,8 +589,9 @@ function filterRows(kw) {{
             return None
 
     def _build_summary_html(self, body_rows):
-        """按B列(排期月份,空不统计)分组，组内按V列(产品线)细分，汇总O/P/Q三列求和"""
+        """按B列(排期月份,空不统计)归并到年月分组，组内按V列(产品线)细分，汇总O/P/Q三列求和"""
         import html as html_mod
+        import re as re_mod
 
         def esc(v):
             return html_mod.escape(str(v)) if v is not None else ''
@@ -604,12 +605,26 @@ function filterRows(kw) {{
                 return str(int(v))
             return f"{v:.2f}".rstrip('0').rstrip('.')
 
+        def to_ym(raw):
+            """把排期月份归并到年月: 2026-08-17/2026/8/17/20260817 → 2026-08"""
+            s = str(raw).strip()
+            m = re_mod.match(r'^(\d{4})[-/年.](\d{1,2})', s)
+            if m:
+                return f"{m.group(1)}-{int(m.group(2)):02d}"
+            m = re_mod.match(r'^(\d{4})(\d{2})(\d{2})$', s)
+            if m:
+                return f"{m.group(1)}-{m.group(2)}"
+            m = re_mod.match(r'^(\d{6})$', s)
+            if m:
+                return f"{m.group(1)[:4]}-{m.group(1)[4:]}"
+            return s
+
         groups = {}
         for row in body_rows:
             month = row[IDX_B] if IDX_B < len(row) else None
             if month is None or str(month).strip() == '':
                 continue
-            month = str(month).strip()
+            ym = to_ym(month)
             product = row[IDX_V] if IDX_V < len(row) else None
             product = str(product).strip() if product and str(product).strip() else '(未知)'
 
@@ -617,7 +632,7 @@ function filterRows(kw) {{
                 v = row[idx] if idx < len(row) else None
                 return self._to_num(v) or 0.0
 
-            g = groups.setdefault(month, {})
+            g = groups.setdefault(ym, {})
             s = g.setdefault(product, [0.0, 0.0, 0.0, 0])
             s[0] += num(IDX_O)
             s[1] += num(IDX_P)
@@ -627,8 +642,8 @@ function filterRows(kw) {{
         if not groups:
             return ''
 
-        parts = ['<div class="summary"><h2>按排期月份×产品线 汇总分析</h2><table>',
-                 '<thead><tr><th>排期月份</th><th>产品线</th><th>需求数</th>'
+        parts = ['<div class="summary"><h2>按年月×产品线 汇总分析</h2><table>',
+                 '<thead><tr><th>年月</th><th>产品线</th><th>需求数</th>'
                  '<th>开发工作量(人天)</th><th>报工时长(人天)</th><th>剩余工作量(人天)</th></tr></thead><tbody>']
 
         for month in sorted(groups.keys()):
