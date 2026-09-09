@@ -383,7 +383,7 @@ class ReportExportTool(AutoSignTool):
             return None
 
         self.logger.info(f"读取子任务文件: {subtask_file}")
-        subtask_data = self._read_xlsx_rows(subtask_file)
+        subtask_data = self._read_xlsx_rows(subtask_file, all_sheets=True)
         if not subtask_data:
             self.logger.error("子任务文件无数据")
             return None
@@ -457,8 +457,7 @@ class ReportExportTool(AutoSignTool):
         if not os.path.isabs(save_dir):
             save_dir = os.path.join(self._get_base_dir(), save_dir)
         os.makedirs(save_dir, exist_ok=True)
-        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        merged_path = os.path.join(save_dir, f"合并结果_{stamp}.xlsx")
+        merged_path = os.path.join(save_dir, f"需求报工完成分析@{datetime.now().strftime('%Y%m')}.xlsx")
         wb.save(merged_path)
 
         self.logger.info(f"合并统计: 思特奇工单 {matched_orders} 条(不重复需求), 匹配子任务 {matched_rows} 行写入")
@@ -473,28 +472,48 @@ class ReportExportTool(AutoSignTool):
         except (ValueError, TypeError):
             return None
 
-    def _read_xlsx_rows(self, file_path):
+    def _read_xlsx_rows(self, file_path, all_sheets=False):
         try:
             from openpyxl import load_workbook
         except ImportError:
             self.logger.error("未安装openpyxl")
             return None
 
+        def read_sheet(ws):
+            out = []
+            for row in ws.iter_rows(values_only=True):
+                out.append(list(row))
+            return out
+
+        def merge_sheets(wb):
+            sheet_names = wb.sheetnames
+            rows = []
+            if all_sheets and len(sheet_names) > 1:
+                self.logger.info(f"文件包含{len(sheet_names)}个sheet: {sheet_names}，全部读取")
+                for sn in sheet_names:
+                    data = read_sheet(wb[sn])
+                    if not data:
+                        self.logger.warning(f"sheet[{sn}]无数据，跳过")
+                        continue
+                    if rows and data and data[0] == rows[0]:
+                        data = data[1:]
+                    rows.extend(data)
+            else:
+                rows = read_sheet(wb.active)
+            return rows
+
         rows = []
         try:
             wb = load_workbook(file_path, read_only=True, data_only=True)
-            ws = wb.active
-            for row in ws.iter_rows(values_only=True):
-                rows.append(list(row))
+            rows = merge_sheets(wb)
             wb.close()
 
-            if len(rows) <= 1:
+            # 该导出文件dimension标记为A1:A1导致read_only只读到表头，需普通模式重读
+            if len(rows) <= 2:
                 self.logger.debug(f"read_only模式读到的行数过少({len(rows)})，改用普通模式重读")
                 rows = []
                 wb = load_workbook(file_path, data_only=True)
-                ws = wb.active
-                for row in ws.iter_rows(values_only=True):
-                    rows.append(list(row))
+                rows = merge_sheets(wb)
                 wb.close()
         except Exception as e:
             self.logger.error(f"读取xlsx失败 {file_path}: {str(e)}")
@@ -503,7 +522,7 @@ class ReportExportTool(AutoSignTool):
         if not rows:
             return None
 
-        width = len(rows[0])
+        width = max(len(r) for r in rows)
         rows = [r + [None] * (width - len(r)) if len(r) < width else r for r in rows]
         return rows
 
