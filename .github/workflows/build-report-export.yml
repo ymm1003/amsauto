@@ -20,7 +20,7 @@ jobs:
           python-version: '3.8'
           architecture: 'x86'
 
-      - run: pip install pyinstaller requests
+      - run: pip install pyinstaller requests openpyxl
 
       - run: pyinstaller --onefile --name "ReportExportTool" --noupx report_export.py
 

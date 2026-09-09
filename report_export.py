@@ -330,16 +330,182 @@ class ReportExportTool(AutoSignTool):
 
         success_count = 0
         fail_count = 0
+        order_file = None
+        subtask_file = None
         for task_cfg in tasks:
             result = self.export_one(task_cfg, b_cookie, begin_date, end_date)
             if result:
                 success_count += 1
+                if task_cfg.get('type') == 'developsubtask':
+                    subtask_file = result
+                else:
+                    order_file = result
             else:
                 fail_count += 1
             time.sleep(2)
 
         self.logger.info(f"导出完成: 成功 {success_count}, 失败 {fail_count}")
+
+        if order_file and subtask_file:
+            self.logger.info("开始合并工单与子任务文件...")
+            try:
+                merged = self.merge_reports(order_file, subtask_file)
+                if merged:
+                    self.logger.info(f"合并完成: {merged}")
+            except Exception as e:
+                self.logger.error(f"合并文件异常: {str(e)}", exc_info=True)
+
         return success_count, fail_count
+
+    @staticmethod
+    def _col_num(letter):
+        n = 0
+        for c in letter.upper():
+            n = n * 26 + ord(c) - 64
+        return n
+
+    def merge_reports(self, order_file, subtask_file):
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            self.logger.error("未安装openpyxl，无法执行合并")
+            return None
+
+        ORDER_COLS = ['A', 'B', 'F', 'G', 'H', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'T', 'U',
+                      'AA', 'AB', 'AA-AB', 'AF', 'AG']
+        ORDER_KEYWORD_COL = 'R'
+        KEYWORD = '思特奇'
+
+        self.logger.info(f"读取工单文件: {order_file}")
+        order_data = self._read_xlsx_rows(order_file)
+        if not order_data:
+            self.logger.error("工单文件无数据")
+            return None
+
+        self.logger.info(f"读取子任务文件: {subtask_file}")
+        subtask_data = self._read_xlsx_rows(subtask_file)
+        if not subtask_data:
+            self.logger.error("子任务文件无数据")
+            return None
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "工单与子任务合并"
+
+        order_header = order_data[0]
+        subtask_header = subtask_data[0]
+
+        merged_header = []
+        for c in ORDER_COLS:
+            if c == 'AA-AB':
+                merged_header.append(f"{order_header[26]}-{order_header[27]}")
+            else:
+                merged_header.append(order_header[self._col_num(c) - 1])
+        for c in ['D', 'E', 'F', 'G']:
+            merged_header.append(subtask_header[self._col_num(c) - 1])
+        ws.append(merged_header)
+
+        g_col = self._col_num('G') - 1
+        r_col = self._col_num(ORDER_KEYWORD_COL) - 1
+
+        subtask_map = {}
+        for row in subtask_data[1:]:
+            name = row[3]
+            if not name:
+                continue
+            name = str(name).strip()
+            if '-思特奇-' in name:
+                key = name.split('-思特奇-', 1)[0].strip()
+                subtask_map.setdefault(key, []).append(row)
+
+        matched_rows = 0
+        matched_orders = 0
+
+        for row in order_data[1:]:
+            def cell(idx):
+                return row[idx] if idx < len(row) else None
+
+            vendor = cell(r_col)
+            if not vendor or KEYWORD not in str(vendor):
+                continue
+
+            aa = self._to_num(cell(self._col_num('AA') - 1))
+            ab = self._to_num(cell(self._col_num('AB') - 1))
+            diff = aa - ab if (aa is not None and ab is not None) else None
+
+            out = []
+            for c in ORDER_COLS:
+                if c == 'AA-AB':
+                    out.append(diff)
+                else:
+                    out.append(cell(self._col_num(c) - 1))
+
+            g_name = str(cell(g_col) or '').strip()
+            sub_rows = subtask_map.get(g_name, [])
+            if not sub_rows and g_name.endswith('-需求子任务'):
+                sub_rows = subtask_map.get(g_name[:-len('-需求子任务')].strip(), [])
+
+            if sub_rows:
+                matched_orders += 1
+                for srow in sub_rows:
+                    ws.append(out + [srow[self._col_num(c) - 1] for c in ['D', 'E', 'F', 'G']])
+                    matched_rows += 1
+            else:
+                ws.append(out + [None, None, None, None])
+
+        save_dir = self.export_config.get('savePath', './export')
+        if not os.path.isabs(save_dir):
+            save_dir = os.path.join(self._get_base_dir(), save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        merged_path = os.path.join(save_dir, f"合并结果_{stamp}.xlsx")
+        wb.save(merged_path)
+
+        self.logger.info(f"合并统计: 思特奇工单 {matched_orders} 条(不重复需求), 匹配子任务 {matched_rows} 行写入")
+        return merged_path
+
+    @staticmethod
+    def _to_num(v):
+        if v is None or v == '':
+            return None
+        try:
+            return float(str(v).strip())
+        except (ValueError, TypeError):
+            return None
+
+    def _read_xlsx_rows(self, file_path):
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            self.logger.error("未安装openpyxl")
+            return None
+
+        rows = []
+        try:
+            wb = load_workbook(file_path, read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(values_only=True):
+                rows.append(list(row))
+            wb.close()
+
+            if len(rows) <= 1:
+                self.logger.debug(f"read_only模式读到的行数过少({len(rows)})，改用普通模式重读")
+                rows = []
+                wb = load_workbook(file_path, data_only=True)
+                ws = wb.active
+                for row in ws.iter_rows(values_only=True):
+                    rows.append(list(row))
+                wb.close()
+        except Exception as e:
+            self.logger.error(f"读取xlsx失败 {file_path}: {str(e)}")
+            return None
+
+        if not rows:
+            return None
+
+        width = len(rows[0])
+        rows = [r + [None] * (width - len(r)) if len(r) < width else r for r in rows]
+        return rows
 
     def _shift_time(self, base_time, offset_minutes):
         try:
