@@ -514,6 +514,8 @@ class ReportExportTool(AutoSignTool):
             trs.append('<tr>' + ''.join(tds) + '</tr>')
         table_body = '\n'.join(trs)
 
+        col_options = self._build_filter_options(body_rows)
+        col_idx_json = '{"month": 1, "product": 21, "vendor_owner": 12, "dev_person": 22, "remain": 16}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -535,9 +537,15 @@ td {{ padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }}
 tr:hover td {{ background: #e6f4ff; }}
 td.empty {{ color: #ccc; text-align: center; }}
 td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
-.search-bar {{ margin-bottom: 12px; }}
-.search-bar input {{ width: 320px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }}
+.search-bar {{ margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
+.search-bar input {{ width: 260px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }}
 .search-bar input:focus {{ outline: none; border-color: #1677ff; }}
+.search-bar select {{ padding: 7px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; max-width: 200px; background: #fff; }}
+.search-bar select:focus {{ outline: none; border-color: #1677ff; }}
+.search-bar .btn {{ padding: 8px 14px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; }}
+.search-bar .btn:hover {{ border-color: #1677ff; color: #1677ff; }}
+.search-bar .btn.active {{ background: #1677ff; border-color: #1677ff; color: #fff; }}
+.search-bar .cnt {{ font-size: 13px; color: #666; margin-left: auto; }}
 .summary {{ background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; overflow: auto; }}
 .summary h2 {{ font-size: 15px; margin: 0; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }}
 .summary table {{ width: 100%; table-layout: fixed; }}
@@ -560,7 +568,16 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <h1>{esc(title)}</h1>
 {stat_html}
 {summary_html}
-<div class="search-bar"><input type="text" id="kw" placeholder="输入关键字过滤..." oninput="filterRows(this.value)"></div>
+<div class="search-bar">
+<input type="text" id="kw" placeholder="输入关键字过滤..." oninput="applyFilters()">
+<button class="btn" id="btn-month" onclick="toggleMonth(this)">未排期月份</button>
+<button class="btn" id="btn-remain" onclick="toggleRemain(this)">报工未完成(剩余&gt;0)</button>
+<select id="f-month" onchange="applyFilters()"><option value="">排期月份: 全部</option>{col_options[0]}</select>
+<select id="f-product" onchange="applyFilters()"><option value="">产品线: 全部</option>{col_options[1]}</select>
+<select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[2]}</select>
+<select id="f-dev" onchange="applyFilters()"><option value="">开发人员: 全部</option>{col_options[3]}</select>
+<span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
+</div>
 <div class="table-wrap">
 <table id="tbl">
 <thead><tr>{th}</tr></thead>
@@ -571,20 +588,116 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 </div>
 </div>
 <script>
-function filterRows(kw) {{
-  kw = kw.trim().toLowerCase();
+const IDX = {col_idx_json};
+let monthBtnActive = false, remainBtnActive = false;
+
+function toggleMonth(btn) {{
+  monthBtnActive = !monthBtnActive;
+  btn.classList.toggle('active', monthBtnActive);
+  applyFilters();
+}}
+function toggleRemain(btn) {{
+  remainBtnActive = !remainBtnActive;
+  btn.classList.toggle('active', remainBtnActive);
+  applyFilters();
+}}
+
+function toYM(raw) {{
+  const s = (raw || '').trim();
+  let m = s.match(/^(\\d{{4}})[-\\/年.](\\d{{1,2}})/);
+  if (m) return m[1] + '-' + String(parseInt(m[2], 10)).padStart(2, '0');
+  m = s.match(/^(\\d{{4}})(\\d{{2}})(\\d{{2}})$/);
+  if (m) return m[1] + '-' + m[2];
+  m = s.match(/^(\\d{{6}})$/);
+  if (m) return m[1].slice(0, 4) + '-' + m[1].slice(4);
+  return s;
+}}
+
+function applyFilters() {{
+  const kw = document.getElementById('kw').value.trim().toLowerCase();
+  const monthSel = document.getElementById('f-month').value;
+  const product = document.getElementById('f-product').value;
+  const vendor = document.getElementById('f-vendor').value;
+  const dev = document.getElementById('f-dev').value;
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
   rows.forEach(r => {{
-    const show = !kw || r.textContent.toLowerCase().includes(kw);
+    const cells = r.children;
+    const showKw = !kw || r.textContent.toLowerCase().includes(kw);
+    let showMonth = true;
+    if (monthBtnActive) {{
+      const mv = cells[IDX.month] ? cells[IDX.month].textContent.trim() : '';
+      showMonth = mv === '' || mv === '-';
+    }}
+    let showMonthSel = true;
+    if (monthSel) {{
+      const mv = cells[IDX.month] ? cells[IDX.month].textContent.trim() : '';
+      const isBlank = mv === '' || mv === '-';
+      if (monthSel === '未排期') {{
+        showMonthSel = isBlank;
+      }} else {{
+        showMonthSel = !isBlank && toYM(mv) === monthSel;
+      }}
+    }}
+    let showRemain = true;
+    if (remainBtnActive) {{
+      const rv = parseFloat(cells[IDX.remain] ? cells[IDX.remain].textContent.trim() : '');
+      showRemain = !isNaN(rv) && rv > 0;
+    }}
+    const pv = cells[IDX.product] ? cells[IDX.product].textContent.trim() : '';
+    const showProduct = !product || pv === product;
+    const vv = cells[IDX.vendor_owner] ? cells[IDX.vendor_owner].textContent.trim() : '';
+    const showVendor = !vendor || vv === vendor || (vendor === '(空)' && (vv === '' || vv === '-'));
+    const dv = cells[IDX.dev_person] ? cells[IDX.dev_person].textContent.trim() : '';
+    const showDev = !dev || dv === dev || (dev === '(空)' && (dv === '' || dv === '-'));
+    const show = showKw && showMonth && showMonthSel && showRemain && showProduct && showVendor && showDev;
     r.style.display = show ? '' : 'none';
     if (show) visible++;
   }});
   document.getElementById('cnt').textContent = visible;
 }}
+document.getElementById('cnt').textContent = {len(body_rows)};
 </script>
 </body>
 </html>"""
+
+    def _to_ym(self, raw):
+        """把排期月份归并到年月: 2026-08-17/2026/8/17/20260817 → 2026-08"""
+        import re as re_mod
+        s = str(raw).strip() if raw is not None else ''
+        m = re_mod.match(r'^(\d{4})[-/年.](\d{1,2})', s)
+        if m:
+            return f"{m.group(1)}-{int(m.group(2)):02d}"
+        m = re_mod.match(r'^(\d{4})(\d{2})(\d{2})$', s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}"
+        m = re_mod.match(r'^(\d{6})$', s)
+        if m:
+            return f"{m.group(1)[:4]}-{m.group(1)[4:]}"
+        return s
+
+    def _build_filter_options(self, body_rows):
+        """从明细数据提取下拉选项: 排期月份(B=1,归并年月,空=未排期), 产品线(V=21), 厂商需求负责人(N=13列即idx12), 开发人员(子任务G列idx22)"""
+        import html as html_mod
+
+        def collect(idx, allow_empty_label='(空)', transform=None):
+            vals = set()
+            for row in body_rows:
+                v = row[idx] if idx < len(row) else None
+                s = str(v).strip() if v is not None and str(v).strip() else ''
+                if transform:
+                    s = transform(v)
+                vals.add(s if s else allow_empty_label)
+            return ''.join(
+                f'<option value="{html_mod.escape(v)}">{html_mod.escape(v)}</option>'
+                for v in sorted(vals, reverse=True)
+            )
+
+        month_opts = collect(1, '未排期', transform=self._to_ym)
+        product_opts = collect(21, '')
+        vendor_opts = collect(12)
+        dev_opts = collect(22)
+        return (month_opts, product_opts, vendor_opts, dev_opts)
 
     @staticmethod
     def _to_num(v):
@@ -598,7 +711,6 @@ function filterRows(kw) {{
     def _build_summary_html(self, body_rows):
         """按B列(排期月份,空不统计)归并到年月分组，组内按V列(产品线)细分，汇总O/P/Q三列求和"""
         import html as html_mod
-        import re as re_mod
 
         def esc(v):
             return html_mod.escape(str(v)) if v is not None else ''
@@ -612,19 +724,7 @@ function filterRows(kw) {{
                 return str(int(v))
             return f"{v:.2f}".rstrip('0').rstrip('.')
 
-        def to_ym(raw):
-            """把排期月份归并到年月: 2026-08-17/2026/8/17/20260817 → 2026-08"""
-            s = str(raw).strip()
-            m = re_mod.match(r'^(\d{4})[-/年.](\d{1,2})', s)
-            if m:
-                return f"{m.group(1)}-{int(m.group(2)):02d}"
-            m = re_mod.match(r'^(\d{4})(\d{2})(\d{2})$', s)
-            if m:
-                return f"{m.group(1)}-{m.group(2)}"
-            m = re_mod.match(r'^(\d{6})$', s)
-            if m:
-                return f"{m.group(1)[:4]}-{m.group(1)[4:]}"
-            return s
+        to_ym = self._to_ym
 
         groups = {}
         for row in body_rows:
