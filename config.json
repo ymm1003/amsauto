@@ -23,6 +23,7 @@
     "reportExport": {
         "exportUser": "yanmm",
         "savePath": "./export",
+        "mergePath": "./export/merge",
         "dateRangeDays": 30,
         "times": ["08:00"],
         "tasks": [

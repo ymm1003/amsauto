@@ -470,7 +470,8 @@ class ReportExportTool(AutoSignTool):
                 ws.append(data_row)
                 all_rows.append(data_row)
 
-        save_dir = self.export_config.get('savePath', './export')
+        # 合并后的Excel和HTML存放路径：读取config.json的reportExport.mergePath，未配置则用savePath
+        save_dir = self.export_config.get('mergePath') or self.export_config.get('savePath', './export')
         if not os.path.isabs(save_dir):
             save_dir = os.path.join(self._get_base_dir(), save_dir)
         os.makedirs(save_dir, exist_ok=True)
