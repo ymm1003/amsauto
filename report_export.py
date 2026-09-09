@@ -646,7 +646,7 @@ function filterRows(kw) {{
                  '<thead><tr><th>年月</th><th>产品线</th><th>需求数</th>'
                  '<th>开发工作量(人天)</th><th>报工时长(人天)</th><th>剩余工作量(人天)</th></tr></thead><tbody>']
 
-        for month in sorted(groups.keys()):
+        for month in sorted(groups.keys(), reverse=True):
             prods = groups[month]
             subtotal = [0.0, 0.0, 0.0, 0]
             for product in sorted(prods.keys()):
