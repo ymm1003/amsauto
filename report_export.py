@@ -379,7 +379,7 @@ class ReportExportTool(AutoSignTool):
         # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',)
         FRONT_COLS = [('order', 'B'), ('order', 'G'), ('report_status',), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
                       ('diff',), ('order', 'H'), ('order', 'AF'), ('order', 'AG')]
-        BACK_COLS = [('order', c) for c in ['A', 'F', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U']]
+        BACK_COLS = [('order', c) for c in ['A', 'F', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U', 'AI']]
         ORDER_COLS = FRONT_COLS + BACK_COLS
         # 子任务文件位置索引: 产品线=5, 开发人员=6（开发子任务名称/流程状态列已去掉）
         SUBTASK_FIELD_IDX = {2: 5, 3: 6}
@@ -610,7 +610,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 9, "dev_work": 6, "report_len": 7, "report_status": 2}'
+        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 9, "dev_work": 6, "report_len": 7, "report_status": 2, "contract": 22}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -639,6 +639,8 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 .search-bar input {{ width: 150px; flex: 0 0 auto; padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; }}
 .search-bar input:focus {{ outline: none; border-color: #1677ff; }}
 .search-bar select {{ padding: 6px 6px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; max-width: 150px; background: #fff; flex: 0 0 auto; }}
+.search-bar select[multiple] {{ height: 60px; max-width: 220px; min-width: 120px; }}
+.search-bar select[multiple] option {{ padding: 1px 4px; }}
 .search-bar select:focus {{ outline: none; border-color: #1677ff; }}
 .search-bar .btn {{ padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }}
 .search-bar .btn:hover {{ border-color: #1677ff; color: #1677ff; }}
@@ -669,6 +671,7 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[1]}</select>
 <select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[2]}</select>
 <select id="f-report-status" onchange="applyFilters()"><option value="">报工状态: 全部</option>{col_options[3]}</select>
+<select id="f-contract" multiple onchange="applyFilters()"><option value="">合同: 全部</option>{col_options[4]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
 </div>
 {summary_html}
@@ -708,6 +711,8 @@ function applyFilters() {{
   const vendor = document.getElementById('f-vendor').value;
   const status = document.getElementById('f-status').value;
   const reportStatus = document.getElementById('f-report-status').value;
+  const contractSel = document.getElementById('f-contract');
+  const contracts = Array.from(contractSel.selectedOptions).map(o => o.value).filter(v => v);
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
   const sum = {{}};
@@ -735,7 +740,12 @@ function applyFilters() {{
     const showStatus = !status || sv === status || sv.includes('\\n' + status) || (status === '(空)' && (sv === '' || sv === '-'));
     const rsv = cells[IDX.report_status] ? cells[IDX.report_status].textContent.trim() : '';
     const showReportStatus = !reportStatus || rsv === reportStatus || (reportStatus === '(空)' && (rsv === '' || rsv === '-'));
-    const show = showKw && showMonthSel && showRemain && showVendor && showStatus && showReportStatus;
+    let showContract = true;
+    if (contracts.length) {{
+      const cv = cells[IDX.contract] ? cells[IDX.contract].textContent.trim() : '';
+      showContract = contracts.includes(cv) || (contracts.includes('(空)') && (cv === '' || cv === '-'));
+    }}
+    const show = showKw && showMonthSel && showRemain && showVendor && showStatus && showReportStatus && showContract;
     r.style.display = show ? '' : 'none';
     if (show) {{
       visible++;
@@ -794,7 +804,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx5), 需求状态(idx9), 报工状态(idx2)"""
+        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx5), 需求状态(idx9), 报工状态(idx2), 合同名称(idx22)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -814,7 +824,8 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         vendor_opts = collect(5)
         status_opts = collect(9)
         report_status_opts = collect(2)
-        return (month_opts, vendor_opts, status_opts, report_status_opts)
+        contract_opts = collect(22)
+        return (month_opts, vendor_opts, status_opts, report_status_opts, contract_opts)
 
     @staticmethod
     def _to_num(v):
