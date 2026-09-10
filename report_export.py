@@ -536,7 +536,7 @@ class ReportExportTool(AutoSignTool):
         if order_file and subtask_file:
             self.logger.info("开始合并工单与子任务文件...")
             try:
-                merged = self.merge_reports(order_file, subtask_file)
+                merged = self.merge_reports(order_file, subtask_file, online_file)
                 if merged:
                     self.logger.info(f"合并完成: {merged}")
             except Exception as e:
@@ -551,23 +551,26 @@ class ReportExportTool(AutoSignTool):
             n = n * 26 + ord(c) - 64
         return n
 
-    def merge_reports(self, order_file, subtask_file):
+    def merge_reports(self, order_file, subtask_file, online_file=None):
         try:
             from openpyxl import Workbook
         except ImportError:
             self.logger.error("未安装openpyxl，无法执行合并")
             return None
 
-        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/需求状态/到达集成商时间/实际上线时间，其它列放最后
-        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',)
+        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/需求状态/上线时间/上线结果/到达集成商时间/实际上线时间，其它列放最后
+        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',) / ('online_time',) / ('online_result',)
         FRONT_COLS = [('order', 'B'), ('order', 'G'), ('report_status',), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
-                      ('diff',), ('order', 'H'), ('order', 'AF'), ('order', 'AG')]
+                      ('diff',), ('order', 'H'), ('online_time',), ('online_result',), ('order', 'AF'), ('order', 'AG')]
         BACK_COLS = [('order', c) for c in ['A', 'F', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U', 'AI']]
         ORDER_COLS = FRONT_COLS + BACK_COLS
         # 子任务文件位置索引: 产品线=5, 开发人员=6（开发子任务名称/流程状态列已去掉）
         SUBTASK_FIELD_IDX = {2: 5, 3: 6}
         ORDER_KEYWORD_COL = 'R'
         KEYWORD = '思特奇'
+        # 上线时间/上线结果列的位置（需求状态idx9后两列）
+        ONLINE_TIME_IDX = 10
+        ONLINE_RESULT_IDX = 11
         # 不纳入分析范围的工单类型
         EXCLUDED_ORDER_TYPES = {'缺陷工单', '新一代需求流程'}
         # 需求状态 → 报工状态 映射
@@ -630,6 +633,10 @@ class ReportExportTool(AutoSignTool):
                 merged_header.append(subtask_header[SUBTASK_FIELD_IDX[col[1]]])
             elif col[0] == 'report_status':
                 merged_header.append("报工状态")
+            elif col[0] == 'online_time':
+                merged_header.append("上线时间")
+            elif col[0] == 'online_result':
+                merged_header.append("上线结果")
             else:
                 merged_header.append(order_header[self._col_num(col[1]) - 1])
         ws.append(merged_header)
@@ -637,6 +644,30 @@ class ReportExportTool(AutoSignTool):
 
         g_col = self._col_num('G') - 1
         r_col = self._col_num(ORDER_KEYWORD_COL) - 1
+
+        # 上线清单: 需求名称(idx5) → (上线时间idx1, 上线状态idx7)，精确匹配
+        online_map = {}
+        if online_file:
+            online_data = self._read_xlsx_rows(online_file)
+            if online_data and len(online_data) > 1:
+                ohdr = online_data[0]
+                name_i = ohdr.index('需求名称') if '需求名称' in ohdr else 5
+                time_i = ohdr.index('上线时间') if '上线时间' in ohdr else 1
+                result_i = ohdr.index('上线状态') if '上线状态' in ohdr else 7
+                for orow in online_data[1:]:
+                    n = str(orow[name_i]).strip() if name_i < len(orow) and orow[name_i] is not None else ''
+                    if not n:
+                        continue
+                    t = orow[time_i] if time_i < len(orow) else None
+                    r = orow[result_i] if result_i < len(orow) else None
+                    # 同一需求多次上线取最近一次（按上线时间倒序保留）
+                    t_s = str(t or '').strip()
+                    if n in online_map:
+                        prev_t = str(online_map[n][0] or '').strip()
+                        if t_s <= prev_t:
+                            continue
+                    online_map[n] = (t, r)
+                self.logger.info(f"上线清单载入: {len(online_map)}个需求名称")
 
         subtask_map = {}
         for row in subtask_data[1:]:
@@ -689,6 +720,8 @@ class ReportExportTool(AutoSignTool):
                     out.append(None)
                 elif col[0] == 'report_status':
                     out.append(report_status)
+                elif col[0] in ('online_time', 'online_result'):
+                    out.append(None)
                 elif col[1] in ('AA', 'AB'):
                     out.append(aa if col[1] == 'AA' else ab)
                 elif col[1] == 'AI':
@@ -701,6 +734,12 @@ class ReportExportTool(AutoSignTool):
 
             g_name = str(cell(g_col) or '').strip()
             sub_rows = subtask_map.get(g_name, [])
+
+            # 上线时间/上线结果: 需求名称在上线清单中精确匹配
+            if online_file and g_name in online_map:
+                o_t, o_r = online_map[g_name]
+                out[ONLINE_TIME_IDX] = o_t
+                out[ONLINE_RESULT_IDX] = o_r
 
             if sub_rows:
                 matched_orders += 1
@@ -799,7 +838,7 @@ class ReportExportTool(AutoSignTool):
 
         col_options = self._build_filter_options(body_rows)
         contract_btns = col_options[4]
-        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 9, "dev_work": 6, "report_len": 7, "report_status": 2, "contract": 22}'
+        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 9, "dev_work": 6, "report_len": 7, "report_status": 2, "contract": 24, "online_time": 10, "online_result": 11}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -863,6 +902,8 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <select id="f-month" onchange="applyFilters()"><option value="">排期月份: 全部</option>{col_options[0]}</select>
 <select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[1]}</select>
 <select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[2]}</select>
+<select id="f-online-time" onchange="applyFilters()"><option value="">上线时间: 全部</option>{col_options[5]}</select>
+<select id="f-online-result" onchange="applyFilters()"><option value="">上线结果: 全部</option>{col_options[6]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
 </div>
 <div class="contract-bar">
@@ -920,6 +961,8 @@ function applyFilters() {{
   const monthSel = document.getElementById('f-month').value;
   const vendor = document.getElementById('f-vendor').value;
   const status = document.getElementById('f-status').value;
+  const onlineTime = document.getElementById('f-online-time').value;
+  const onlineResult = document.getElementById('f-online-result').value;
   const reportStatus = document.getElementById('f-report-status').value;
   const contracts = Array.from(document.querySelectorAll('.contract-bar .btn.cb-item.active')).map(b => b.dataset.v);
   const rows = document.querySelectorAll('#tbl tbody tr');
@@ -949,12 +992,16 @@ function applyFilters() {{
     const showStatus = !status || sv === status || sv.includes('\\n' + status) || (status === '(空)' && (sv === '' || sv === '-'));
     const rsv = cells[IDX.report_status] ? cells[IDX.report_status].textContent.trim() : '';
     const showReportStatus = !reportStatus || rsv === reportStatus || (reportStatus === '(空)' && (rsv === '' || rsv === '-'));
+    const otv = cells[IDX.online_time] ? cells[IDX.online_time].textContent.trim() : '';
+    const showOnlineTime = !onlineTime || otv === onlineTime || (onlineTime === '(空)' && (otv === '' || otv === '-'));
+    const orv = cells[IDX.online_result] ? cells[IDX.online_result].textContent.trim() : '';
+    const showOnlineResult = !onlineResult || orv === onlineResult || (onlineResult === '(空)' && (orv === '' || orv === '-'));
     let showContract = true;
     if (contracts.length) {{
       const cv = cells[IDX.contract] ? cells[IDX.contract].textContent.trim() : '';
       showContract = contracts.includes(cv) || (contracts.includes('(空)') && (cv === '' || cv === '-'));
     }}
-    const show = showKw && showMonthSel && showRemain && showVendor && showStatus && showReportStatus && showContract;
+    const show = showKw && showMonthSel && showRemain && showVendor && showStatus && showReportStatus && showOnlineTime && showOnlineResult && showContract;
     r.style.display = show ? '' : 'none';
     if (show) {{
       visible++;
@@ -1033,10 +1080,12 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         vendor_opts = collect(5)
         status_opts = collect(9)
         report_status_opts = collect(2)
+        online_time_opts = collect(10)
+        online_result_opts = collect(11)
         contract_vals = []
         seen = set()
         for row in body_rows:
-            v = row[22] if 22 < len(row) else None
+            v = row[24] if 24 < len(row) else None
             s = str(v).strip() if v is not None and str(v).strip() else '(空)'
             if s not in seen:
                 seen.add(s)
@@ -1045,7 +1094,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             f'<button class="btn cb-item" data-v="{html_mod.escape(v)}" onclick="pickContract(this)">{html_mod.escape(v)}</button>'
             for v in sorted(contract_vals, reverse=True)
         )
-        return (month_opts, vendor_opts, status_opts, report_status_opts, contract_btns)
+        return (month_opts, vendor_opts, status_opts, report_status_opts, contract_btns, online_time_opts, online_result_opts)
 
     @staticmethod
     def _to_num(v):
