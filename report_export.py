@@ -519,11 +519,15 @@ class ReportExportTool(AutoSignTool):
         summary_html = self._build_summary_html(body_rows)
 
         th = ''.join(f'<th>{esc(h)}</th>' for h in header)
+        NAME_IDX = 0
         trs = []
         for row in body_rows:
             tds = []
             for i, v in enumerate(row):
-                if v is None or v == '':
+                if i == NAME_IDX and v is not None and v != '':
+                    full = esc(v)
+                    tds.append(f'<td class="name-cell" title="{full}">{full}</td>')
+                elif v is None or v == '':
                     tds.append('<td class="empty">-</td>')
                 else:
                     css = ' num-cell' if isinstance(v, (int, float)) else ''
@@ -554,6 +558,8 @@ td {{ padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }}
 tr:hover td {{ background: #e6f4ff; }}
 td.empty {{ color: #ccc; text-align: center; }}
 td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
+#tbl th:first-child, #tbl td.name-cell {{ max-width: 320px; min-width: 320px; overflow: hidden; text-overflow: ellipsis; }}
+#tbl td.name-cell:hover {{ white-space: normal; word-break: break-all; background: #fffbe6; }}
 .search-bar {{ margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
 .search-bar input {{ width: 260px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }}
 .search-bar input:focus {{ outline: none; border-color: #1677ff; }}
