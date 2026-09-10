@@ -675,11 +675,11 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 {stat_html}
 <div class="search-bar">
 <input type="text" id="kw" placeholder="输入关键字过滤..." oninput="applyFilters()">
+<select id="f-report-status" onchange="applyFilters()"><option value="">报工状态: 全部</option>{col_options[3]}</select>
 <button class="btn" id="btn-remain" onclick="toggleRemain(this)">报工未完成(剩余&gt;0)</button>
 <select id="f-month" onchange="applyFilters()"><option value="">排期月份: 全部</option>{col_options[0]}</select>
 <select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[1]}</select>
 <select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[2]}</select>
-<select id="f-report-status" onchange="applyFilters()"><option value="">报工状态: 全部</option>{col_options[3]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
 </div>
 <div class="contract-bar">
