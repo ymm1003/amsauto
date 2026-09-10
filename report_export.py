@@ -712,7 +712,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             return None
 
     def _build_summary_html(self, body_rows):
-        """按排期月份(idx12,空不统计)归并到年月分组，汇总需求数量/开发工作量/报工时长，剩余=开发-报工"""
+        """按排期月份(idx12)归并到年月分组，空显示为未排期；汇总需求数量/开发工作量/报工时长，剩余=开发-报工"""
         import html as html_mod
 
         def esc(v):
@@ -733,8 +733,9 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         for row in body_rows:
             month = row[IDX_B] if IDX_B < len(row) else None
             if month is None or str(month).strip() == '':
-                continue
-            ym = to_ym(month)
+                ym = '未排期'
+            else:
+                ym = to_ym(month)
 
             def num(idx):
                 v = row[idx] if idx < len(row) else None
@@ -753,8 +754,11 @@ document.getElementById('cnt').textContent = {len(body_rows)};
                  '<thead><tr><th>年月</th><th>需求数量</th>'
                  '<th>开发工作量(人天)</th><th>报工时长(人天)</th><th>剩余工作量(人天)</th></tr></thead><tbody>']
 
+        def sort_key(k):
+            return (1, '') if k == '未排期' else (0, k)
+
         total = [0, 0.0, 0.0, 0.0]
-        for month in sorted(groups.keys(), reverse=True):
+        for month in sorted(groups.keys(), key=sort_key, reverse=True):
             o, p, q, n = groups[month]
             total[0] += n; total[1] += o; total[2] += p; total[3] += q
             parts.append(f'<tr><td>{esc(month)}</td><td>{n}</td>'
