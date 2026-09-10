@@ -492,7 +492,7 @@ class ReportExportTool(AutoSignTool):
                 aa = 0
             if ab is None:
                 ab = 0
-            diff = aa - ab
+            diff = round(aa - ab, 2)
 
             # 报工状态: 由需求状态(H列)映射
             req_status = str(cell(self._col_num('H') - 1) or '').strip()
