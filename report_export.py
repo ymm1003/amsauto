@@ -384,6 +384,7 @@ class ReportExportTool(AutoSignTool):
             business_key = row.get('wfinstid')
             wfid = row.get('wfid', 'TestOnline')
             online_name = str(row.get('wfinstname') or '').strip()
+            online_time = str(row.get('p_online_time') or '').strip()
             self.logger.info(f"[{task_name}] ({i}/{len(all_rows)}) 导出上线单: businessKey={business_key}, 名称: {online_name}")
             if not business_key:
                 self.logger.warning(f"[{task_name}] ({i}) 上线单缺少wfinstid，跳过")
@@ -431,7 +432,7 @@ class ReportExportTool(AutoSignTool):
 
             path = self._download_b_file(f"{task_name}_{i:02d}", base_url, b_cookie, file_name, referer)
             if path:
-                downloaded.append((online_name, business_key, path))
+                downloaded.append((online_name, online_time, business_key, path))
             time.sleep(1)
 
         if not downloaded:
@@ -450,21 +451,21 @@ class ReportExportTool(AutoSignTool):
             return downloaded[-1][2]
 
     def _merge_online_list(self, task_name, downloaded):
-        """把多个上线单清单xlsx合并为一个：每个上线单一行，清单明细列横向展开，加来源上线单列"""
+        """把多个上线单清单xlsx合并为一个：清单明细前加 来源上线单/上线时间/上线单名称 列"""
         from openpyxl import Workbook
 
         merged_data = None
         merged_header = None
-        for online_name, business_key, path in downloaded:
+        for online_name, online_time, business_key, path in downloaded:
             rows = self._read_xlsx_rows(path)
             if not rows or len(rows) < 2:
                 self.logger.warning(f"[{task_name}] 上线单[{online_name}]清单文件无数据，跳过: {path}")
                 continue
             if merged_header is None:
-                merged_header = ['上线单', '上线单名称'] + rows[0]
+                merged_header = ['上线单', '上线时间', '上线单名称'] + rows[0]
                 merged_data = []
             for r in rows[1:]:
-                merged_data.append([online_name, business_key] + list(r))
+                merged_data.append([online_name, online_time, business_key] + list(r))
 
         if not merged_data:
             self.logger.error(f"[{task_name}] 所有上线单清单均无明细数据")
