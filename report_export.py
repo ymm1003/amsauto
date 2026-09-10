@@ -318,14 +318,13 @@ class ReportExportTool(AutoSignTool):
             return None
 
     def export_online_list(self, task_cfg, b_cookie):
-        """导出上线清单：先查上线列表取第一条记录的businessKey+wfid，再导出该上线单的清单附件"""
+        """导出上线清单：查上线列表，逐条导出每个上线单的清单附件，最后合并为一个文件"""
         import requests as requests_mod
         task_name = task_cfg.get('name', '上线清单')
         base_url = self.b_config['baseUrl']
 
         list_url = f"{base_url}/dcits/business/vo/onlineReviewList"
         export_url = f"{base_url}/dcits/business/vo/exportOnlineList"
-        detail_page_url = f"{base_url}/dcits/business/vo/onlineReviewInfo"
 
         headers = {
             "Cookie": f"JSESSIONID={b_cookie}",
@@ -337,88 +336,157 @@ class ReportExportTool(AutoSignTool):
             "Referer": f"{base_url}/dcits/business/vo/onlineReviewInfo",
         }
 
-        # 步骤1: 查询上线列表，取第一条记录
+        # 步骤1: 查询上线列表（分页取全部记录）
         online_cfg = task_cfg.get('listParams', {})
         default_stime = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
         default_etime = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
-        list_params = {
-            'wfinstcode': '',
-            'wfinstname': '',
-            'stime': online_cfg.get('stime', default_stime),
-            'etime': online_cfg.get('etime', default_etime),
-            'pageSize': online_cfg.get('pageSize', 10),
-            'pageNum': online_cfg.get('pageNum', 1),
-            'orderByColumn': '',
-            'isAsc': 'asc',
-        }
-
+        page_size = int(online_cfg.get('pageSize', 100))
+        all_rows = []
+        page_num = 1
         try:
-            self.logger.info(f"[{task_name}] 步骤1: 查询上线列表 {list_params['stime']} ~ {list_params['etime']}")
-            resp = requests_mod.post(list_url, headers=headers, data=list_params, timeout=60, verify=False)
-            if resp.status_code != 200:
-                self.logger.error(f"[{task_name}] 上线列表请求失败: HTTP {resp.status_code}")
-                return None
-            result = resp.json()
-            if result.get('code') != 0:
-                self.logger.error(f"[{task_name}] 上线列表返回失败: {result}")
-                return None
-            rows = result.get('rows') or []
-            if not rows:
+            while True:
+                list_params = {
+                    'wfinstcode': '',
+                    'wfinstname': '',
+                    'stime': online_cfg.get('stime', default_stime),
+                    'etime': online_cfg.get('etime', default_etime),
+                    'pageSize': page_size,
+                    'pageNum': page_num,
+                    'orderByColumn': '',
+                    'isAsc': 'asc',
+                }
+                self.logger.info(f"[{task_name}] 步骤1: 查询上线列表 第{page_num}页 {list_params['stime']} ~ {list_params['etime']}")
+                resp = requests_mod.post(list_url, headers=headers, data=list_params, timeout=60, verify=False)
+                if resp.status_code != 200:
+                    self.logger.error(f"[{task_name}] 上线列表请求失败: HTTP {resp.status_code}")
+                    return None
+                result = resp.json()
+                if result.get('code') != 0:
+                    self.logger.error(f"[{task_name}] 上线列表返回失败: {result}")
+                    return None
+                rows = result.get('rows') or []
+                all_rows.extend(rows)
+                total = int(result.get('total') or 0)
+                if len(all_rows) >= total or not rows:
+                    break
+                page_num += 1
+            if not all_rows:
                 self.logger.error(f"[{task_name}] 上线列表无记录，跳过导出")
                 return None
-            first = rows[0]
-            business_key = first.get('wfinstid')
-            wfid = first.get('wfid', 'TestOnline')
-            self.logger.info(f"[{task_name}] 取第一条上线单: businessKey={business_key}, wfid={wfid}, 名称: {first.get('wfinstname')}")
+            self.logger.info(f"[{task_name}] 上线列表共 {total} 条，获取 {len(all_rows)} 条")
         except Exception as e:
             self.logger.error(f"[{task_name}] 查询上线列表异常: {str(e)}")
             return None
 
-        # 步骤2: 调用导出接口
-        referer = f"{base_url}/dcits/business/vo/findOnlineReviewInfo?businessKey={business_key}&wfid={wfid}"
-        export_headers = dict(headers)
-        export_headers["Referer"] = referer
-        export_headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
-        export_headers["Accept"] = "*/*"
-        export_params = {
-            'wfid': wfid,
-            'businessKey': business_key,
-            'wfinstCode': '',
-            'wfinstName': '',
-            'onlineType': '',
-            'state': '',
-            'applyer': '',
-            'reqperson': '',
-            'isSensitive': '',
-            'reviewsitua': '',
-            'checktestsitua': '',
-            'onlinesituaa': '',
-            'checkproductsitua': '',
-            'A_resource': '',
-            'submitorgid': '',
-        }
+        # 步骤2: 逐条导出并下载
+        downloaded = []
+        for i, row in enumerate(all_rows, 1):
+            business_key = row.get('wfinstid')
+            wfid = row.get('wfid', 'TestOnline')
+            online_name = str(row.get('wfinstname') or '').strip()
+            self.logger.info(f"[{task_name}] ({i}/{len(all_rows)}) 导出上线单: businessKey={business_key}, 名称: {online_name}")
+            if not business_key:
+                self.logger.warning(f"[{task_name}] ({i}) 上线单缺少wfinstid，跳过")
+                continue
 
-        try:
-            self.logger.info(f"[{task_name}] 步骤2: 调用导出接口获取文件名")
-            resp = requests_mod.post(export_url, headers=export_headers, data=export_params, timeout=60, verify=False)
-            if resp.status_code != 200:
-                self.logger.error(f"[{task_name}] 导出接口请求失败: HTTP {resp.status_code}")
-                return None
-            result = resp.json()
-            if result.get('code') != 0:
-                self.logger.error(f"[{task_name}] 导出接口返回失败: {result}")
-                return None
-            file_name = result.get('msg')
-            if not file_name:
-                self.logger.error(f"[{task_name}] 导出接口未返回文件名: {result}")
-                return None
-            self.logger.info(f"[{task_name}] 获取到文件名: {file_name}")
-        except Exception as e:
-            self.logger.error(f"[{task_name}] 调用导出接口异常: {str(e)}")
+            referer = f"{base_url}/dcits/business/vo/findOnlineReviewInfo?businessKey={business_key}&wfid={wfid}"
+            export_headers = dict(headers)
+            export_headers["Referer"] = referer
+            export_headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
+            export_headers["Accept"] = "*/*"
+            export_params = {
+                'wfid': wfid,
+                'businessKey': business_key,
+                'wfinstCode': '',
+                'wfinstName': '',
+                'onlineType': '',
+                'state': '',
+                'applyer': '',
+                'reqperson': '',
+                'isSensitive': '',
+                'reviewsitua': '',
+                'checktestsitua': '',
+                'onlinesituaa': '',
+                'checkproductsitua': '',
+                'A_resource': '',
+                'submitorgid': '',
+            }
+
+            try:
+                resp = requests_mod.post(export_url, headers=export_headers, data=export_params, timeout=60, verify=False)
+                if resp.status_code != 200:
+                    self.logger.error(f"[{task_name}] ({i}) 导出接口请求失败: HTTP {resp.status_code}")
+                    continue
+                result = resp.json()
+                if result.get('code') != 0:
+                    self.logger.error(f"[{task_name}] ({i}) 导出接口返回失败: {result}")
+                    continue
+                file_name = result.get('msg')
+                if not file_name:
+                    self.logger.error(f"[{task_name}] ({i}) 导出接口未返回文件名: {result}")
+                    continue
+            except Exception as e:
+                self.logger.error(f"[{task_name}] ({i}) 调用导出接口异常: {str(e)}")
+                continue
+
+            path = self._download_b_file(f"{task_name}_{i:02d}", base_url, b_cookie, file_name, referer)
+            if path:
+                downloaded.append((online_name, business_key, path))
+            time.sleep(1)
+
+        if not downloaded:
+            self.logger.error(f"[{task_name}] 所有上线单导出均失败")
             return None
 
-        # 步骤3: 下载
-        return self._download_b_file(task_name, base_url, b_cookie, file_name, referer)
+        # 步骤3: 合并为一个文件
+        if len(downloaded) == 1:
+            self.logger.info(f"[{task_name}] 仅1个上线单，无需合并")
+            return downloaded[0][2]
+        try:
+            merged = self._merge_online_list(task_name, downloaded)
+            return merged
+        except Exception as e:
+            self.logger.error(f"[{task_name}] 合并上线清单异常: {str(e)}", exc_info=True)
+            return downloaded[-1][2]
+
+    def _merge_online_list(self, task_name, downloaded):
+        """把多个上线单清单xlsx合并为一个：每个上线单一行，清单明细列横向展开，加来源上线单列"""
+        from openpyxl import Workbook
+
+        merged_data = None
+        merged_header = None
+        for online_name, business_key, path in downloaded:
+            rows = self._read_xlsx_rows(path)
+            if not rows or len(rows) < 2:
+                self.logger.warning(f"[{task_name}] 上线单[{online_name}]清单文件无数据，跳过: {path}")
+                continue
+            if merged_header is None:
+                merged_header = ['上线单', '上线单名称'] + rows[0]
+                merged_data = []
+            for r in rows[1:]:
+                merged_data.append([online_name, business_key] + list(r))
+
+        if not merged_data:
+            self.logger.error(f"[{task_name}] 所有上线单清单均无明细数据")
+            return None
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "上线清单"
+        ws.append(merged_header)
+        for r in merged_data:
+            ws.append(r)
+
+        # 存放路径与合并报表一致
+        save_dir = self.export_config.get('mergePath') or self.export_config.get('savePath', './export')
+        if not os.path.isabs(save_dir):
+            save_dir = os.path.join(self._get_base_dir(), save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        date_str = datetime.now().strftime('%Y%m%d')
+        merged_path = os.path.join(save_dir, f"{task_name}@{date_str}.xlsx")
+        wb.save(merged_path)
+        self.logger.info(f"[{task_name}] 合并完成: {len(merged_data)}行 明细 ← {len(downloaded)}个上线单, 输出: {merged_path}")
+        return merged_path
 
     def run_export(self):
         tasks = self.export_config.get('tasks', [])
