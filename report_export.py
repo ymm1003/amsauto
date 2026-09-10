@@ -375,11 +375,11 @@ class ReportExportTool(AutoSignTool):
             self.logger.error("未安装openpyxl，无法执行合并")
             return None
 
-        # 列顺序: 需求名称/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/到达集成商时间/实际上线时间，其它列放最后
+        # 列顺序: 排期月份/需求名称/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/到达集成商时间/实际上线时间，其它列放最后
         # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',)
-        FRONT_COLS = [('order', 'G'), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
+        FRONT_COLS = [('order', 'B'), ('order', 'G'), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
                       ('diff',), ('order', 'AF'), ('order', 'AG')]
-        BACK_COLS = [('order', c) for c in ['A', 'B', 'F', 'H', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U']]
+        BACK_COLS = [('order', c) for c in ['A', 'F', 'H', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U']]
         ORDER_COLS = FRONT_COLS + BACK_COLS
         # 子任务文件位置索引: 产品线=5, 开发人员=6（开发子任务名称/流程状态列已去掉）
         SUBTASK_FIELD_IDX = {2: 5, 3: 6}
@@ -500,7 +500,8 @@ class ReportExportTool(AutoSignTool):
             for c in row_cells:
                 if isinstance(c.value, str) and '\n' in c.value:
                     c.alignment = wrap
-        ws.column_dimensions['A'].width = 50
+        ws.column_dimensions['A'].width = 12
+        ws.column_dimensions['B'].width = 50
 
         wb.save(merged_path)
 
@@ -540,7 +541,7 @@ class ReportExportTool(AutoSignTool):
         summary_html = self._build_summary_html(body_rows)
 
         th = ''.join(f'<th>{esc(h)}</th>' for h in header)
-        NAME_IDX = 0
+        NAME_IDX = 1
         trs = []
         for row in body_rows:
             tds = []
@@ -559,7 +560,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 10, "vendor_owner": 3, "remain": 6, "status": 12, "dev_work": 4, "report_len": 5}'
+        col_idx_json = '{"month": 0, "vendor_owner": 4, "remain": 7, "status": 13, "dev_work": 5, "report_len": 6}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -582,7 +583,7 @@ td.multi {{ white-space: pre-line; }}
 tr:hover td {{ background: #e6f4ff; }}
 td.empty {{ color: #ccc; text-align: center; }}
 td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
-#tbl th:first-child, #tbl td.name-cell {{ max-width: 320px; min-width: 320px; overflow: hidden; text-overflow: ellipsis; }}
+#tbl th:nth-child(2), #tbl td.name-cell {{ max-width: 320px; min-width: 320px; overflow: hidden; text-overflow: ellipsis; }}
 #tbl td.name-cell:hover {{ white-space: normal; word-break: break-all; background: #fffbe6; }}
 .search-bar {{ margin-bottom: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }}
 .search-bar input {{ width: 150px; flex: 0 0 auto; padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; }}
@@ -739,7 +740,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(idx10,归并年月,空=未排期), 厂商需求负责人(idx3), 需求状态(idx12)"""
+        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx4), 需求状态(idx13)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -755,9 +756,9 @@ document.getElementById('cnt').textContent = {len(body_rows)};
                 for v in sorted(vals, reverse=True)
             )
 
-        month_opts = collect(10, '未排期', transform=self._to_ym)
-        vendor_opts = collect(3)
-        status_opts = collect(12)
+        month_opts = collect(0, '未排期', transform=self._to_ym)
+        vendor_opts = collect(4)
+        status_opts = collect(13)
         return (month_opts, vendor_opts, status_opts)
 
     @staticmethod
@@ -770,13 +771,13 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             return None
 
     def _build_summary_html(self, body_rows):
-        """按排期月份(idx10)归并到年月分组，空显示为未排期；汇总需求数量/开发工作量/报工时长，剩余=开发-报工"""
+        """按排期月份(idx0)归并到年月分组，空显示为未排期；汇总需求数量/开发工作量/报工时长，剩余=开发-报工"""
         import html as html_mod
 
         def esc(v):
             return html_mod.escape(str(v)) if v is not None else ''
 
-        IDX_B, IDX_O, IDX_P = 10, 4, 5
+        IDX_B, IDX_O, IDX_P = 0, 5, 6
 
         def fmt(v):
             if v is None:
