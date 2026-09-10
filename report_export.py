@@ -463,6 +463,9 @@ class ReportExportTool(AutoSignTool):
                     out.append(diff)
                 elif col[0] == 'sub':
                     out.append(None)
+                elif col[1] in ('AA', 'AB'):
+                    # 源数据是文本型数字，转成数值以保证与剩余工作量列对齐一致
+                    out.append(aa if col[1] == 'AA' else ab)
                 else:
                     out.append(cell(self._col_num(col[1]) - 1))
 
