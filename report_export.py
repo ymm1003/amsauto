@@ -755,7 +755,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
                  '<th>开发工作量(人天)</th><th>报工时长(人天)</th><th>剩余工作量(人天)</th></tr></thead><tbody>']
 
         def sort_key(k):
-            return (1, '') if k == '未排期' else (0, k)
+            return (0, '') if k == '未排期' else (1, k)
 
         total = [0, 0.0, 0.0, 0.0]
         for month in sorted(groups.keys(), key=sort_key, reverse=True):
