@@ -560,15 +560,15 @@ td.empty {{ color: #ccc; text-align: center; }}
 td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 #tbl th:first-child, #tbl td.name-cell {{ max-width: 320px; min-width: 320px; overflow: hidden; text-overflow: ellipsis; }}
 #tbl td.name-cell:hover {{ white-space: normal; word-break: break-all; background: #fffbe6; }}
-.search-bar {{ margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
-.search-bar input {{ width: 260px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }}
+.search-bar {{ margin-bottom: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }}
+.search-bar input {{ width: 150px; flex: 0 0 auto; padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; }}
 .search-bar input:focus {{ outline: none; border-color: #1677ff; }}
-.search-bar select {{ padding: 7px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; max-width: 200px; background: #fff; }}
+.search-bar select {{ padding: 6px 6px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; max-width: 150px; background: #fff; flex: 0 0 auto; }}
 .search-bar select:focus {{ outline: none; border-color: #1677ff; }}
-.search-bar .btn {{ padding: 8px 14px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; }}
+.search-bar .btn {{ padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }}
 .search-bar .btn:hover {{ border-color: #1677ff; color: #1677ff; }}
 .search-bar .btn.active {{ background: #1677ff; border-color: #1677ff; color: #fff; }}
-.search-bar .cnt {{ font-size: 13px; color: #666; margin-left: auto; }}
+.search-bar .cnt {{ font-size: 13px; color: #666; margin-left: auto; flex: 0 0 auto; white-space: nowrap; }}
 .summary {{ background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; overflow: auto; }}
 .summary h2 {{ font-size: 15px; margin: 0; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }}
 .summary table {{ width: 100%; table-layout: fixed; }}
