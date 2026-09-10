@@ -554,7 +554,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 12, "product": 1, "vendor_owner": 3, "dev_person": 2, "remain": 6, "status": 14}'
+        col_idx_json = '{"month": 12, "product": 1, "vendor_owner": 3, "dev_person": 2, "remain": 6, "status": 14, "dev_work": 4, "report_len": 5}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -606,7 +606,6 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <div class="container">
 <h1>{esc(title)}</h1>
 {stat_html}
-{summary_html}
 <div class="search-bar">
 <input type="text" id="kw" placeholder="输入关键字过滤..." oninput="applyFilters()">
 <button class="btn" id="btn-remain" onclick="toggleRemain(this)">报工未完成(剩余&gt;0)</button>
@@ -615,6 +614,7 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[2]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
 </div>
+{summary_html}
 <div class="table-wrap">
 <table id="tbl">
 <thead><tr>{th}</tr></thead>
@@ -652,6 +652,7 @@ function applyFilters() {{
   const status = document.getElementById('f-status').value;
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
+  const sum = {{}};
   rows.forEach(r => {{
     const cells = r.children;
     const showKw = !kw || r.textContent.toLowerCase().includes(kw);
@@ -676,9 +677,41 @@ function applyFilters() {{
     const showStatus = !status || sv === status || sv.includes('\\n' + status) || (status === '(空)' && (sv === '' || sv === '-'));
     const show = showKw && showMonthSel && showRemain && showVendor && showStatus;
     r.style.display = show ? '' : 'none';
-    if (show) visible++;
+    if (show) {{
+      visible++;
+      const mv = cells[IDX.month] ? cells[IDX.month].textContent.trim() : '';
+      const key = (mv === '' || mv === '-') ? '未排期' : toYM(mv);
+      const o = parseFloat(cells[IDX.dev_work] ? cells[IDX.dev_work].textContent.trim() : '') || 0;
+      const p = parseFloat(cells[IDX.report_len] ? cells[IDX.report_len].textContent.trim() : '') || 0;
+      const g = sum[key] || [0, 0, 0];
+      sum[key] = [g[0] + o, g[1] + p, g[2] + 1];
+    }}
   }});
   document.getElementById('cnt').textContent = visible;
+  renderSummary(sum);
+}}
+
+function fmtNum(v) {{
+  if (v === 0) return '0';
+  const r = Math.round(v * 100) / 100;
+  return Number.isInteger(r) ? String(r) : String(r);
+}}
+
+function renderSummary(sum) {{
+  const keys = Object.keys(sum).sort((a, b) => {{
+    if (a === '未排期') return 1;
+    if (b === '未排期') return -1;
+    return b.localeCompare(a);
+  }});
+  let html = '';
+  let tn = 0, to = 0, tp = 0;
+  keys.forEach(k => {{
+    const o = sum[k][0], p = sum[k][1], n = sum[k][2];
+    tn += n; to += o; tp += p;
+    html += '<tr><td>' + k + '</td><td>' + n + '</td><td>' + fmtNum(o) + '</td><td>' + fmtNum(p) + '</td><td>' + fmtNum(o - p) + '</td></tr>';
+  }});
+  html += '<tr class="subtotal"><td>合计</td><td>' + tn + '</td><td>' + fmtNum(to) + '</td><td>' + fmtNum(tp) + '</td><td>' + fmtNum(to - tp) + '</td></tr>';
+  document.querySelector('#summary-tbl tbody').innerHTML = html;
 }}
 document.getElementById('cnt').textContent = {len(body_rows)};
 </script>
@@ -770,7 +803,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         if not groups:
             return ''
 
-        parts = ['<div class="summary"><h2>按排期年月 汇总分析</h2><table>',
+        parts = ['<div class="summary"><h2>按排期年月 汇总分析</h2><table id="summary-tbl">',
                  '<thead><tr><th>年月</th><th>需求数量</th>'
                  '<th>开发工作量(人天)</th><th>报工时长(人天)</th><th>剩余工作量(人天)</th></tr></thead><tbody>']
 
