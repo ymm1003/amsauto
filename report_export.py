@@ -257,22 +257,27 @@ class ReportExportTool(AutoSignTool):
             return None
 
         self.logger.info(f"[{task_name}] 步骤2: 下载文件")
-        try:
-            download_url = f"{base_url}/dcits/common/download"
-            download_headers = dict(headers)
-            download_headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
-            download_headers["Upgrade-Insecure-Requests"] = "1"
+        return self._download_b_file(task_name, base_url, b_cookie, file_name, referer)
 
+    def _download_b_file(self, task_name, base_url, b_cookie, file_name, referer):
+        headers = {
+            "Cookie": f"JSESSIONID={b_cookie}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 6.1; ) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.115 Safari/537.36 Qaxbrowser",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Referer": referer,
+            "Upgrade-Insecure-Requests": "1",
+        }
+        try:
             resp = requests.get(
-                download_url,
-                headers=download_headers,
+                f"{base_url}/dcits/common/download",
+                headers=headers,
                 params={"fileName": file_name, "delete": "true"},
                 timeout=120,
                 verify=False,
-                stream=True
+                stream=True,
             )
             self.logger.debug(f"[{task_name}] download响应状态码: {resp.status_code}")
-            self.logger.debug(f"[{task_name}] download响应头: {dict(resp.headers)}")
 
             if resp.status_code != 200:
                 self.logger.error(f"[{task_name}] 下载失败: HTTP {resp.status_code}")
@@ -312,6 +317,109 @@ class ReportExportTool(AutoSignTool):
             self.logger.error(f"[{task_name}] 下载文件异常: {str(e)}")
             return None
 
+    def export_online_list(self, task_cfg, b_cookie):
+        """导出上线清单：先查上线列表取第一条记录的businessKey+wfid，再导出该上线单的清单附件"""
+        import requests as requests_mod
+        task_name = task_cfg.get('name', '上线清单')
+        base_url = self.b_config['baseUrl']
+
+        list_url = f"{base_url}/dcits/business/vo/onlineReviewList"
+        export_url = f"{base_url}/dcits/business/vo/exportOnlineList"
+        detail_page_url = f"{base_url}/dcits/business/vo/onlineReviewInfo"
+
+        headers = {
+            "Cookie": f"JSESSIONID={b_cookie}",
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "Mozilla/5.0 (Windows NT 6.1; ) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.115 Safari/537.36 Qaxbrowser",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Origin": base_url,
+            "Referer": f"{base_url}/dcits/business/vo/onlineReviewInfo",
+        }
+
+        # 步骤1: 查询上线列表，取第一条记录
+        online_cfg = task_cfg.get('listParams', {})
+        default_stime = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        default_etime = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+        list_params = {
+            'wfinstcode': '',
+            'wfinstname': '',
+            'stime': online_cfg.get('stime', default_stime),
+            'etime': online_cfg.get('etime', default_etime),
+            'pageSize': online_cfg.get('pageSize', 10),
+            'pageNum': online_cfg.get('pageNum', 1),
+            'orderByColumn': '',
+            'isAsc': 'asc',
+        }
+
+        try:
+            self.logger.info(f"[{task_name}] 步骤1: 查询上线列表 {list_params['stime']} ~ {list_params['etime']}")
+            resp = requests_mod.post(list_url, headers=headers, data=list_params, timeout=60, verify=False)
+            if resp.status_code != 200:
+                self.logger.error(f"[{task_name}] 上线列表请求失败: HTTP {resp.status_code}")
+                return None
+            result = resp.json()
+            if result.get('code') != 0:
+                self.logger.error(f"[{task_name}] 上线列表返回失败: {result}")
+                return None
+            rows = result.get('rows') or []
+            if not rows:
+                self.logger.error(f"[{task_name}] 上线列表无记录，跳过导出")
+                return None
+            first = rows[0]
+            business_key = first.get('wfinstid')
+            wfid = first.get('wfid', 'TestOnline')
+            self.logger.info(f"[{task_name}] 取第一条上线单: businessKey={business_key}, wfid={wfid}, 名称: {first.get('wfinstname')}")
+        except Exception as e:
+            self.logger.error(f"[{task_name}] 查询上线列表异常: {str(e)}")
+            return None
+
+        # 步骤2: 调用导出接口
+        referer = f"{base_url}/dcits/business/vo/findOnlineReviewInfo?businessKey={business_key}&wfid={wfid}"
+        export_headers = dict(headers)
+        export_headers["Referer"] = referer
+        export_headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
+        export_headers["Accept"] = "*/*"
+        export_params = {
+            'wfid': wfid,
+            'businessKey': business_key,
+            'wfinstCode': '',
+            'wfinstName': '',
+            'onlineType': '',
+            'state': '',
+            'applyer': '',
+            'reqperson': '',
+            'isSensitive': '',
+            'reviewsitua': '',
+            'checktestsitua': '',
+            'onlinesituaa': '',
+            'checkproductsitua': '',
+            'A_resource': '',
+            'submitorgid': '',
+        }
+
+        try:
+            self.logger.info(f"[{task_name}] 步骤2: 调用导出接口获取文件名")
+            resp = requests_mod.post(export_url, headers=export_headers, data=export_params, timeout=60, verify=False)
+            if resp.status_code != 200:
+                self.logger.error(f"[{task_name}] 导出接口请求失败: HTTP {resp.status_code}")
+                return None
+            result = resp.json()
+            if result.get('code') != 0:
+                self.logger.error(f"[{task_name}] 导出接口返回失败: {result}")
+                return None
+            file_name = result.get('msg')
+            if not file_name:
+                self.logger.error(f"[{task_name}] 导出接口未返回文件名: {result}")
+                return None
+            self.logger.info(f"[{task_name}] 获取到文件名: {file_name}")
+        except Exception as e:
+            self.logger.error(f"[{task_name}] 调用导出接口异常: {str(e)}")
+            return None
+
+        # 步骤3: 下载
+        return self._download_b_file(task_name, base_url, b_cookie, file_name, referer)
+
     def run_export(self):
         tasks = self.export_config.get('tasks', [])
         if not tasks:
@@ -336,12 +444,18 @@ class ReportExportTool(AutoSignTool):
         fail_count = 0
         order_file = None
         subtask_file = None
+        online_file = None
         for task_cfg in tasks:
-            result = self.export_one(task_cfg, b_cookie, begin_date, end_date)
+            if task_cfg.get('type') == 'onlinelist':
+                result = self.export_online_list(task_cfg, b_cookie)
+            else:
+                result = self.export_one(task_cfg, b_cookie, begin_date, end_date)
             if result:
                 success_count += 1
                 if task_cfg.get('type') == 'developsubtask':
                     subtask_file = result
+                elif task_cfg.get('type') == 'onlinelist':
+                    online_file = result
                 else:
                     order_file = result
             else:
