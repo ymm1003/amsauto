@@ -375,9 +375,9 @@ class ReportExportTool(AutoSignTool):
             self.logger.error("未安装openpyxl，无法执行合并")
             return None
 
-        # 列顺序: 排期月份/需求名称/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/到达集成商时间/实际上线时间，其它列放最后
-        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',)
-        FRONT_COLS = [('order', 'B'), ('order', 'G'), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
+        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/到达集成商时间/实际上线时间，其它列放最后
+        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',)
+        FRONT_COLS = [('order', 'B'), ('order', 'G'), ('report_status',), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
                       ('diff',), ('order', 'AF'), ('order', 'AG')]
         BACK_COLS = [('order', c) for c in ['A', 'F', 'H', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U']]
         ORDER_COLS = FRONT_COLS + BACK_COLS
@@ -387,6 +387,36 @@ class ReportExportTool(AutoSignTool):
         KEYWORD = '思特奇'
         # 不纳入分析范围的工单类型
         EXCLUDED_ORDER_TYPES = {'缺陷工单', '新一代需求流程'}
+        # 需求状态 → 报工状态 映射
+        REPORT_STATUS_MAP = {
+            '一级业务需求_工作量和方案反馈': '未到开发',
+            '数智化部需求_工作量和方案反馈': '未到开发',
+            '业务需求_工作量和方案反馈': '未到开发',
+            '业务需求_待集成商经分开发': '可报工',
+            '一级业务需求_开发中': '可报工',
+            '数智化部需求_开发中': '可报工',
+            '数智化部需求_待集成商经分开发': '可报工',
+            '业务需求_开发中': '可报工',
+            '业务需求_上线中': '可报工',
+            '数智化部需求_上线中': '可报工',
+            '一级业务需求_上线中': '可报工',
+            '业务需求_待移交维护': '可报工',
+            '一级业务需求_待移交维护': '可报工',
+            '业务需求_待需求提出人经分开发结果确认': '可报工',
+            '数智化部需求_待维护交接': '可报工',
+            '网管需求_上线中': '可报工',
+            '业务需求_待维护交接': '可报工',
+            '一级业务需求_移交维护中': '不能报工',
+            '业务需求_已关闭': '不能报工',
+            '数智化部需求_已关闭': '不能报工',
+            '一级业务需求_已关闭': '不能报工',
+            '业务需求_移交维护中': '不能报工',
+            '数智化部需求_维护交接中': '不能报工',
+            '业务需求_维护交接中': '不能报工',
+            '一级业务需求_已取消': '已取消',
+            '业务需求_已取消': '已取消',
+            '数智化部需求_已取消': '已取消',
+        }
 
         self.logger.info(f"读取工单文件: {order_file}")
         order_data = self._read_xlsx_rows(order_file)
@@ -415,6 +445,8 @@ class ReportExportTool(AutoSignTool):
                 merged_header.append("剩余工作量（人天）")
             elif col[0] == 'sub':
                 merged_header.append(subtask_header[SUBTASK_FIELD_IDX[col[1]]])
+            elif col[0] == 'report_status':
+                merged_header.append("报工状态")
             else:
                 merged_header.append(order_header[self._col_num(col[1]) - 1])
         ws.append(merged_header)
@@ -453,9 +485,18 @@ class ReportExportTool(AutoSignTool):
             if req_status.endswith('已取消'):
                 continue
 
+            # 源数据是文本型数字，转成数值以保证与剩余工作量列对齐一致；空视为0
             aa = self._to_num(cell(self._col_num('AA') - 1))
             ab = self._to_num(cell(self._col_num('AB') - 1))
-            diff = aa - ab if (aa is not None and ab is not None) else None
+            if aa is None:
+                aa = 0
+            if ab is None:
+                ab = 0
+            diff = aa - ab
+
+            # 报工状态: 由需求状态(H列)映射
+            req_status = str(cell(self._col_num('H') - 1) or '').strip()
+            report_status = REPORT_STATUS_MAP.get(req_status, '')
 
             out = []
             for col in ORDER_COLS:
@@ -463,8 +504,9 @@ class ReportExportTool(AutoSignTool):
                     out.append(diff)
                 elif col[0] == 'sub':
                     out.append(None)
+                elif col[0] == 'report_status':
+                    out.append(report_status)
                 elif col[1] in ('AA', 'AB'):
-                    # 源数据是文本型数字，转成数值以保证与剩余工作量列对齐一致
                     out.append(aa if col[1] == 'AA' else ab)
                 else:
                     out.append(cell(self._col_num(col[1]) - 1))
@@ -568,7 +610,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 0, "vendor_owner": 4, "remain": 7, "status": 12, "dev_work": 5, "report_len": 6}'
+        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 13, "dev_work": 6, "report_len": 7, "report_status": 2}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -626,6 +668,7 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <select id="f-month" onchange="applyFilters()"><option value="">排期月份: 全部</option>{col_options[0]}</select>
 <select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[1]}</select>
 <select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[2]}</select>
+<select id="f-report-status" onchange="applyFilters()"><option value="">报工状态: 全部</option>{col_options[3]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
 </div>
 {summary_html}
@@ -664,6 +707,7 @@ function applyFilters() {{
   const monthSel = document.getElementById('f-month').value;
   const vendor = document.getElementById('f-vendor').value;
   const status = document.getElementById('f-status').value;
+  const reportStatus = document.getElementById('f-report-status').value;
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
   const sum = {{}};
@@ -689,7 +733,9 @@ function applyFilters() {{
     const showVendor = !vendor || vv === vendor || (vendor === '(空)' && (vv === '' || vv === '-'));
     const sv = cells[IDX.status] ? cells[IDX.status].textContent.trim() : '';
     const showStatus = !status || sv === status || sv.includes('\\n' + status) || (status === '(空)' && (sv === '' || sv === '-'));
-    const show = showKw && showMonthSel && showRemain && showVendor && showStatus;
+    const rsv = cells[IDX.report_status] ? cells[IDX.report_status].textContent.trim() : '';
+    const showReportStatus = !reportStatus || rsv === reportStatus || (reportStatus === '(空)' && (rsv === '' || rsv === '-'));
+    const show = showKw && showMonthSel && showRemain && showVendor && showStatus && showReportStatus;
     r.style.display = show ? '' : 'none';
     if (show) {{
       visible++;
@@ -748,7 +794,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx4), 需求状态(idx12)"""
+        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx5), 需求状态(idx13), 报工状态(idx2)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -765,9 +811,10 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             )
 
         month_opts = collect(0, '未排期', transform=self._to_ym)
-        vendor_opts = collect(4)
-        status_opts = collect(12)
-        return (month_opts, vendor_opts, status_opts)
+        vendor_opts = collect(5)
+        status_opts = collect(13)
+        report_status_opts = collect(2)
+        return (month_opts, vendor_opts, status_opts, report_status_opts)
 
     @staticmethod
     def _to_num(v):
@@ -785,7 +832,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         def esc(v):
             return html_mod.escape(str(v)) if v is not None else ''
 
-        IDX_B, IDX_O, IDX_P = 0, 5, 6
+        IDX_B, IDX_O, IDX_P = 0, 6, 7
 
         def fmt(v):
             if v is None:
