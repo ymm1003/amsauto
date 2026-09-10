@@ -611,10 +611,8 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <input type="text" id="kw" placeholder="输入关键字过滤..." oninput="applyFilters()">
 <button class="btn" id="btn-remain" onclick="toggleRemain(this)">报工未完成(剩余&gt;0)</button>
 <select id="f-month" onchange="applyFilters()"><option value="">排期月份: 全部</option>{col_options[0]}</select>
-<select id="f-product" onchange="applyFilters()"><option value="">产品线: 全部</option>{col_options[1]}</select>
-<select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[2]}</select>
-<select id="f-dev" onchange="applyFilters()"><option value="">开发人员: 全部</option>{col_options[3]}</select>
-<select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[4]}</select>
+<select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[1]}</select>
+<select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[2]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
 </div>
 <div class="table-wrap">
@@ -650,9 +648,7 @@ function toYM(raw) {{
 function applyFilters() {{
   const kw = document.getElementById('kw').value.trim().toLowerCase();
   const monthSel = document.getElementById('f-month').value;
-  const product = document.getElementById('f-product').value;
   const vendor = document.getElementById('f-vendor').value;
-  const dev = document.getElementById('f-dev').value;
   const status = document.getElementById('f-status').value;
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
@@ -674,15 +670,11 @@ function applyFilters() {{
       const rv = parseFloat(cells[IDX.remain] ? cells[IDX.remain].textContent.trim() : '');
       showRemain = !isNaN(rv) && rv > 0;
     }}
-    const pv = cells[IDX.product] ? cells[IDX.product].textContent.trim() : '';
-    const showProduct = !product || pv === product || pv.includes('\\n' + product);
     const vv = cells[IDX.vendor_owner] ? cells[IDX.vendor_owner].textContent.trim() : '';
     const showVendor = !vendor || vv === vendor || (vendor === '(空)' && (vv === '' || vv === '-'));
-    const dv = cells[IDX.dev_person] ? cells[IDX.dev_person].textContent.trim() : '';
-    const showDev = !dev || dv === dev || dv.includes('\\n' + dev) || (dev === '(空)' && (dv === '' || dv === '-'));
     const sv = cells[IDX.status] ? cells[IDX.status].textContent.trim() : '';
     const showStatus = !status || sv === status || sv.includes('\\n' + status) || (status === '(空)' && (sv === '' || sv === '-'));
-    const show = showKw && showMonthSel && showRemain && showProduct && showVendor && showDev && showStatus;
+    const show = showKw && showMonthSel && showRemain && showVendor && showStatus;
     r.style.display = show ? '' : 'none';
     if (show) visible++;
   }});
@@ -709,7 +701,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(idx12,归并年月,空=未排期), 产品线(idx1), 厂商需求负责人(idx3), 开发人员(idx2), 需求状态(idx14)"""
+        """从明细数据提取下拉选项: 排期月份(idx12,归并年月,空=未排期), 厂商需求负责人(idx3), 需求状态(idx14)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -726,11 +718,9 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             )
 
         month_opts = collect(12, '未排期', transform=self._to_ym)
-        product_opts = collect(1, '')
         vendor_opts = collect(3)
-        dev_opts = collect(2)
         status_opts = collect(14)
-        return (month_opts, product_opts, vendor_opts, dev_opts, status_opts)
+        return (month_opts, vendor_opts, status_opts)
 
     @staticmethod
     def _to_num(v):
