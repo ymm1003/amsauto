@@ -24,7 +24,7 @@
         "exportUser": "yanmm",
         "savePath": "./export",
         "mergePath": "./export/merge",
-        "dateRangeDays": 30,
+        "jcstime1": "2026-01-01",
         "times": ["08:00"],
         "tasks": [
             {
