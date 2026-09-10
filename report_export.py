@@ -375,11 +375,11 @@ class ReportExportTool(AutoSignTool):
             self.logger.error("未安装openpyxl，无法执行合并")
             return None
 
-        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/到达集成商时间/实际上线时间，其它列放最后
+        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/需求状态/到达集成商时间/实际上线时间，其它列放最后
         # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',)
         FRONT_COLS = [('order', 'B'), ('order', 'G'), ('report_status',), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
-                      ('diff',), ('order', 'AF'), ('order', 'AG')]
-        BACK_COLS = [('order', c) for c in ['A', 'F', 'H', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U']]
+                      ('diff',), ('order', 'H'), ('order', 'AF'), ('order', 'AG')]
+        BACK_COLS = [('order', c) for c in ['A', 'F', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U']]
         ORDER_COLS = FRONT_COLS + BACK_COLS
         # 子任务文件位置索引: 产品线=5, 开发人员=6（开发子任务名称/流程状态列已去掉）
         SUBTASK_FIELD_IDX = {2: 5, 3: 6}
@@ -610,7 +610,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 13, "dev_work": 6, "report_len": 7, "report_status": 2}'
+        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 9, "dev_work": 6, "report_len": 7, "report_status": 2}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -794,7 +794,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx5), 需求状态(idx13), 报工状态(idx2)"""
+        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx5), 需求状态(idx9), 报工状态(idx2)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -812,7 +812,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
 
         month_opts = collect(0, '未排期', transform=self._to_ym)
         vendor_opts = collect(5)
-        status_opts = collect(13)
+        status_opts = collect(9)
         report_status_opts = collect(2)
         return (month_opts, vendor_opts, status_opts, report_status_opts)
 
