@@ -461,18 +461,24 @@ class ReportExportTool(AutoSignTool):
 
             if sub_rows:
                 matched_orders += 1
-                for srow in sub_rows:
-                    for i, col in enumerate(FRONT_COLS):
-                        if col[0] == 'sub':
-                            out[i] = srow[SUBTASK_FIELD_IDX[col[1]]]
-                    data_row = list(out)
-                    ws.append(data_row)
-                    all_rows.append(data_row)
-                    matched_rows += 1
-            else:
-                data_row = list(out)
-                ws.append(data_row)
-                all_rows.append(data_row)
+                # 一个需求一行：子任务各列合并展示（多值用换行分隔，去重）
+                for i, col in enumerate(FRONT_COLS):
+                    if col[0] == 'sub':
+                        vals = []
+                        for srow in sub_rows:
+                            v = srow[SUBTASK_FIELD_IDX[col[1]]]
+                            if v is None or str(v).strip() == '':
+                                continue
+                            v = str(v).strip()
+                            if v not in vals:
+                                vals.append(v)
+                        if vals:
+                            out[i] = '\n'.join(vals)
+                matched_rows += len(sub_rows)
+
+            data_row = list(out)
+            ws.append(data_row)
+            all_rows.append(data_row)
 
         # 合并后的Excel和HTML存放路径：读取config.json的reportExport.mergePath，未配置则用savePath
         save_dir = self.export_config.get('mergePath') or self.export_config.get('savePath', './export')
@@ -481,14 +487,24 @@ class ReportExportTool(AutoSignTool):
         os.makedirs(save_dir, exist_ok=True)
         date_str = datetime.now().strftime('%Y%m%d')
         merged_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}.xlsx")
+
+        # 合并单元格列（含换行多值）自动换行显示，需求名称列加宽
+        from openpyxl.styles import Alignment
+        wrap = Alignment(wrap_text=True, vertical='top')
+        for row_cells in ws.iter_rows(min_row=2):
+            for c in row_cells:
+                if isinstance(c.value, str) and '\n' in c.value:
+                    c.alignment = wrap
+        ws.column_dimensions['A'].width = 50
+
         wb.save(merged_path)
 
-        self.logger.info(f"合并统计: 思特奇工单 {matched_orders} 条(不重复需求), 匹配子任务 {matched_rows} 行写入")
+        self.logger.info(f"合并统计: 思特奇工单 {matched_orders} 条, 其中匹配子任务 {matched_orders} 条, 未找到子任务 {len(all_rows) - 1 - matched_orders} 条")
 
         html_all = self._generate_html(all_rows, f"需求报工完成分析@{date_str}", stats={
             "需求总数": len(all_rows) - 1,
-            "匹配子任务行": matched_rows,
-            "未找到子任务需求数量": (len(all_rows) - 1) - matched_rows,
+            "匹配子任务需求": matched_orders,
+            "未找到子任务需求数量": (len(all_rows) - 1) - matched_orders,
         })
         html_all_path = os.path.join(save_dir, f"需求报工完成分析@{date_str}.html")
         with open(html_all_path, 'w', encoding='utf-8') as f:
@@ -531,6 +547,8 @@ class ReportExportTool(AutoSignTool):
                     tds.append('<td class="empty">-</td>')
                 else:
                     css = ' num-cell' if isinstance(v, (int, float)) else ''
+                    if isinstance(v, str) and '\n' in v:
+                        css += ' multi'
                     tds.append(f'<td class="{css.strip()}">{esc(v)}</td>')
             trs.append('<tr>' + ''.join(tds) + '</tr>')
         table_body = '\n'.join(trs)
@@ -555,6 +573,7 @@ h1 {{ font-size: 20px; margin: 0 0 12px; }}
 table {{ border-collapse: collapse; font-size: 12px; white-space: nowrap; }}
 th {{ position: sticky; top: 0; background: #1677ff; color: #fff; padding: 8px 10px; text-align: left; z-index: 2; }}
 td {{ padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }}
+td.multi {{ white-space: pre-line; }}
 tr:hover td {{ background: #e6f4ff; }}
 td.empty {{ color: #ccc; text-align: center; }}
 td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
@@ -656,13 +675,13 @@ function applyFilters() {{
       showRemain = !isNaN(rv) && rv > 0;
     }}
     const pv = cells[IDX.product] ? cells[IDX.product].textContent.trim() : '';
-    const showProduct = !product || pv === product;
+    const showProduct = !product || pv === product || pv.includes('\\n' + product);
     const vv = cells[IDX.vendor_owner] ? cells[IDX.vendor_owner].textContent.trim() : '';
     const showVendor = !vendor || vv === vendor || (vendor === '(空)' && (vv === '' || vv === '-'));
     const dv = cells[IDX.dev_person] ? cells[IDX.dev_person].textContent.trim() : '';
-    const showDev = !dev || dv === dev || (dev === '(空)' && (dv === '' || dv === '-'));
+    const showDev = !dev || dv === dev || dv.includes('\\n' + dev) || (dev === '(空)' && (dv === '' || dv === '-'));
     const sv = cells[IDX.status] ? cells[IDX.status].textContent.trim() : '';
-    const showStatus = !status || sv === status || (status === '(空)' && (sv === '' || sv === '-'));
+    const showStatus = !status || sv === status || sv.includes('\\n' + status) || (status === '(空)' && (sv === '' || sv === '-'));
     const show = showKw && showMonthSel && showRemain && showProduct && showVendor && showDev && showStatus;
     r.style.display = show ? '' : 'none';
     if (show) visible++;
