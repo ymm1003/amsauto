@@ -385,6 +385,8 @@ class ReportExportTool(AutoSignTool):
         SUBTASK_FIELD_IDX = {2: 5, 3: 6}
         ORDER_KEYWORD_COL = 'R'
         KEYWORD = '思特奇'
+        # 不纳入分析范围的工单类型
+        EXCLUDED_ORDER_TYPES = {'缺陷工单', '新一代需求流程'}
 
         self.logger.info(f"读取工单文件: {order_file}")
         order_data = self._read_xlsx_rows(order_file)
@@ -440,6 +442,10 @@ class ReportExportTool(AutoSignTool):
 
             vendor = cell(r_col)
             if not vendor or KEYWORD not in str(vendor):
+                continue
+
+            order_type = str(cell(self._col_num('J') - 1) or '').strip()
+            if order_type in EXCLUDED_ORDER_TYPES:
                 continue
 
             aa = self._to_num(cell(self._col_num('AA') - 1))
