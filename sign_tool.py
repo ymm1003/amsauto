@@ -59,16 +59,24 @@ class AutoSignTool:
         self.load_users()
         self.last_executed = {}
 
+    @staticmethod
+    def _read_json_file(file_path):
+        for enc in ('utf-8-sig', 'utf-8', 'gbk', 'gb18030'):
+            try:
+                with open(file_path, 'r', encoding=enc) as f:
+                    return json.load(f)
+            except UnicodeDecodeError:
+                continue
+        raise ValueError(f"无法解析文件编码: {file_path}")
+
     def load_users(self):
-        with open(self.users_path, 'r', encoding='utf-8') as f:
-            self.users = json.load(f)
+        self.users = self._read_json_file(self.users_path)
         self.logger.info(f"用户文件加载完成: {self.users_path}, 用户数量: {len(self.users)}")
 
     def reload_config(self):
         config_path = get_config_path()
         self.users_path = get_users_path()
-        with open(config_path, 'r', encoding='utf-8') as f:
-            self.config = json.load(f)
+        self.config = self._read_json_file(config_path)
         self.a_config = self.config['aSystem']
         self.b_config = self.config['bSystem']
         self.schedule = self.config.get('schedule', {})
@@ -108,8 +116,7 @@ class AutoSignTool:
         self.logger.setLevel(logging.DEBUG)
         self.logger.handlers = []
 
-        with open(config_path, 'r', encoding='utf-8') as f:
-            self.config = json.load(f)
+        self.config = self._read_json_file(config_path)
         self.a_config = self.config['aSystem']
         self.b_config = self.config['bSystem']
         self.schedule = self.config.get('schedule', {})
