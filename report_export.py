@@ -448,6 +448,11 @@ class ReportExportTool(AutoSignTool):
             if order_type in EXCLUDED_ORDER_TYPES:
                 continue
 
+            # 需求状态以"已取消"结尾的工单不参与合并分析
+            req_status = str(cell(self._col_num('H') - 1) or '').strip()
+            if req_status.endswith('已取消'):
+                continue
+
             aa = self._to_num(cell(self._col_num('AA') - 1))
             ab = self._to_num(cell(self._col_num('AB') - 1))
             diff = aa - ab if (aa is not None and ab is not None) else None
