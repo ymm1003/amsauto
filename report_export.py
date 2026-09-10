@@ -615,6 +615,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
+        contract_btns = col_options[4]
         col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 9, "dev_work": 6, "report_len": 7, "report_status": 2, "contract": 22}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -644,13 +645,16 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 .search-bar input {{ width: 150px; flex: 0 0 auto; padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; }}
 .search-bar input:focus {{ outline: none; border-color: #1677ff; }}
 .search-bar select {{ padding: 6px 6px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; max-width: 150px; background: #fff; flex: 0 0 auto; }}
-.search-bar select[multiple] {{ height: 60px; max-width: 220px; min-width: 120px; }}
-.search-bar select[multiple] option {{ padding: 1px 4px; }}
 .search-bar select:focus {{ outline: none; border-color: #1677ff; }}
 .search-bar .btn {{ padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }}
 .search-bar .btn:hover {{ border-color: #1677ff; color: #1677ff; }}
 .search-bar .btn.active {{ background: #1677ff; border-color: #1677ff; color: #fff; }}
 .search-bar .cnt {{ font-size: 13px; color: #666; margin-left: auto; flex: 0 0 auto; white-space: nowrap; }}
+.contract-bar {{ margin-bottom: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }}
+.contract-bar .cb-label {{ font-size: 13px; color: #666; flex: 0 0 auto; }}
+.contract-bar .btn {{ padding: 5px 14px; border: 1px solid #d9d9d9; border-radius: 14px; background: #fff; font-size: 13px; cursor: pointer; white-space: nowrap; }}
+.contract-bar .btn:hover {{ border-color: #1677ff; color: #1677ff; }}
+.contract-bar .btn.active {{ background: #1677ff; border-color: #1677ff; color: #fff; }}
 .summary {{ background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; overflow: auto; }}
 .summary h2 {{ font-size: 15px; margin: 0; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }}
 .summary table {{ width: 100%; table-layout: fixed; }}
@@ -676,8 +680,12 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[1]}</select>
 <select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[2]}</select>
 <select id="f-report-status" onchange="applyFilters()"><option value="">报工状态: 全部</option>{col_options[3]}</select>
-<select id="f-contract" multiple onchange="applyFilters()"><option value="">合同: 全部</option>{col_options[4]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
+</div>
+<div class="contract-bar">
+<span class="cb-label">合同:</span>
+<button class="btn cb-all active" data-v="" onclick="pickContract(this)">全部</button>
+{contract_btns}
 </div>
 {summary_html}
 <div class="table-wrap">
@@ -699,6 +707,20 @@ function toggleRemain(btn) {{
   applyFilters();
 }}
 
+function pickContract(btn) {{
+  if (btn.classList.contains('cb-all')) {{
+    document.querySelectorAll('.contract-bar .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }} else {{
+    document.querySelector('.contract-bar .btn.cb-all').classList.remove('active');
+    btn.classList.toggle('active', !btn.classList.contains('active'));
+    if (!document.querySelector('.contract-bar .btn.cb-item.active')) {{
+      document.querySelector('.contract-bar .btn.cb-all').classList.add('active');
+    }}
+  }}
+  applyFilters();
+}}
+
 function toYM(raw) {{
   const s = (raw || '').trim();
   let m = s.match(/^(\\d{{4}})[-\\/年.](\\d{{1,2}})/);
@@ -716,8 +738,7 @@ function applyFilters() {{
   const vendor = document.getElementById('f-vendor').value;
   const status = document.getElementById('f-status').value;
   const reportStatus = document.getElementById('f-report-status').value;
-  const contractSel = document.getElementById('f-contract');
-  const contracts = Array.from(contractSel.selectedOptions).map(o => o.value).filter(v => v);
+  const contracts = Array.from(document.querySelectorAll('.contract-bar .btn.cb-item.active')).map(b => b.dataset.v);
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
   const sum = {{}};
@@ -829,8 +850,19 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         vendor_opts = collect(5)
         status_opts = collect(9)
         report_status_opts = collect(2)
-        contract_opts = collect(22)
-        return (month_opts, vendor_opts, status_opts, report_status_opts, contract_opts)
+        contract_vals = []
+        seen = set()
+        for row in body_rows:
+            v = row[22] if 22 < len(row) else None
+            s = str(v).strip() if v is not None and str(v).strip() else '(空)'
+            if s not in seen:
+                seen.add(s)
+                contract_vals.append(s)
+        contract_btns = ''.join(
+            f'<button class="btn cb-item" data-v="{html_mod.escape(v)}" onclick="pickContract(this)">{html_mod.escape(v)}</button>'
+            for v in sorted(contract_vals, reverse=True)
+        )
+        return (month_opts, vendor_opts, status_opts, report_status_opts, contract_btns)
 
     @staticmethod
     def _to_num(v):
