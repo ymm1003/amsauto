@@ -536,7 +536,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 12, "product": 1, "vendor_owner": 3, "dev_person": 2, "remain": 6, "status": 10}'
+        col_idx_json = '{"month": 12, "product": 1, "vendor_owner": 3, "dev_person": 2, "remain": 6, "status": 14}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -595,7 +595,7 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 <select id="f-product" onchange="applyFilters()"><option value="">产品线: 全部</option>{col_options[1]}</select>
 <select id="f-vendor" onchange="applyFilters()"><option value="">厂商需求负责人: 全部</option>{col_options[2]}</select>
 <select id="f-dev" onchange="applyFilters()"><option value="">开发人员: 全部</option>{col_options[3]}</select>
-<select id="f-status" onchange="applyFilters()"><option value="">流程状态: 全部</option>{col_options[4]}</select>
+<select id="f-status" onchange="applyFilters()"><option value="">需求状态: 全部</option>{col_options[4]}</select>
 <span class="cnt">显示 <b id="cnt"></b> / {len(body_rows)} 行</span>
 </div>
 <div class="table-wrap">
@@ -690,7 +690,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(idx12,归并年月,空=未排期), 产品线(idx1), 厂商需求负责人(idx3), 开发人员(idx2), 流程状态(idx10)"""
+        """从明细数据提取下拉选项: 排期月份(idx12,归并年月,空=未排期), 产品线(idx1), 厂商需求负责人(idx3), 开发人员(idx2), 需求状态(idx14)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -710,7 +710,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         product_opts = collect(1, '')
         vendor_opts = collect(3)
         dev_opts = collect(2)
-        status_opts = collect(10)
+        status_opts = collect(14)
         return (month_opts, product_opts, vendor_opts, dev_opts, status_opts)
 
     @staticmethod
