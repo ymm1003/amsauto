@@ -567,17 +567,14 @@ td.num-cell {{ text-align: right; font-family: Consolas, monospace; }}
 .summary h2 {{ font-size: 15px; margin: 0; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }}
 .summary table {{ width: 100%; table-layout: fixed; }}
 .summary th {{ position: static; background: #fafafa; color: #333; text-align: center; }}
-.summary th:nth-child(1), .summary td:nth-child(1) {{ width: 11%; text-align: center; }}
-.summary th:nth-child(2), .summary td:nth-child(2) {{ width: 12%; text-align: left; font-family: inherit; white-space: normal; word-break: break-all; }}
-.summary th:nth-child(3), .summary td:nth-child(3) {{ width: 14%; text-align: right; }}
-.summary th:nth-child(4), .summary td:nth-child(4) {{ width: 21%; text-align: right; }}
-.summary th:nth-child(5), .summary td:nth-child(5) {{ width: 20%; text-align: right; }}
-.summary th:nth-child(6), .summary td:nth-child(6) {{ width: 22%; text-align: right; }}
+.summary th:nth-child(1), .summary td:nth-child(1) {{ width: 16%; text-align: center; }}
+.summary th:nth-child(2), .summary td:nth-child(2) {{ width: 14%; text-align: right; }}
+.summary th:nth-child(3), .summary td:nth-child(3) {{ width: 24%; text-align: right; }}
+.summary th:nth-child(4), .summary td:nth-child(4) {{ width: 23%; text-align: right; }}
+.summary th:nth-child(5), .summary td:nth-child(5) {{ width: 23%; text-align: right; }}
 .summary tr:hover td {{ background: #e6f4ff; }}
 .summary td {{ padding: 6px 10px; border-bottom: 1px solid #f0f0f0; font-family: Consolas, monospace; white-space: nowrap; }}
-.summary td:nth-child(2) {{ white-space: normal; font-family: inherit; }}
 .summary .subtotal td {{ background: #f0f7ff; font-weight: bold; border-top: 2px solid #1677ff; }}
-.summary .no-subtask td:nth-child(2) {{ color: #e6a23c; }}
 </style>
 </head>
 <body>
@@ -715,13 +712,13 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             return None
 
     def _build_summary_html(self, body_rows):
-        """按排期月份(idx12,空不统计)归并到年月分组，组内按产品线(idx9)细分，汇总开发工作量/报工时长/剩余工作量(idx2/3/4)求和"""
+        """按排期月份(idx12,空不统计)归并到年月分组，汇总需求数量/开发工作量/报工时长，剩余=开发-报工"""
         import html as html_mod
 
         def esc(v):
             return html_mod.escape(str(v)) if v is not None else ''
 
-        IDX_B, IDX_O, IDX_P, IDX_Q, IDX_V = 12, 2, 3, 4, 9
+        IDX_B, IDX_O, IDX_P = 12, 2, 3
 
         def fmt(v):
             if v is None:
@@ -738,39 +735,32 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             if month is None or str(month).strip() == '':
                 continue
             ym = to_ym(month)
-            product = row[IDX_V] if IDX_V < len(row) else None
-            if not product or not str(product).strip():
-                product = '未找到子任务'
 
             def num(idx):
                 v = row[idx] if idx < len(row) else None
                 return self._to_num(v) or 0.0
 
-            g = groups.setdefault(ym, {})
-            s = g.setdefault(product, [0.0, 0.0, 0.0, 0])
-            s[0] += num(IDX_O)
-            s[1] += num(IDX_P)
-            s[2] += num(IDX_Q)
-            s[3] += 1
+            o, p, q, n = groups.get(ym, (0.0, 0.0, 0.0, 0))
+            o += num(IDX_O)
+            p += num(IDX_P)
+            q = o - p
+            groups[ym] = (o, p, q, n + 1)
 
         if not groups:
             return ''
 
-        parts = ['<div class="summary"><h2>按年月×产品线 汇总分析</h2><table>',
-                 '<thead><tr><th>年月</th><th>产品线</th><th>需求数</th>'
+        parts = ['<div class="summary"><h2>按排期年月 汇总分析</h2><table>',
+                 '<thead><tr><th>年月</th><th>需求数量</th>'
                  '<th>开发工作量(人天)</th><th>报工时长(人天)</th><th>剩余工作量(人天)</th></tr></thead><tbody>']
 
+        total = [0, 0.0, 0.0, 0.0]
         for month in sorted(groups.keys(), reverse=True):
-            prods = groups[month]
-            subtotal = [0.0, 0.0, 0.0, 0]
-            for product in sorted(prods.keys()):
-                o, p, q, n = prods[product]
-                subtotal[0] += o; subtotal[1] += p; subtotal[2] += q; subtotal[3] += n
-                cls = ' class="no-subtask"' if product == '未找到子任务' else ''
-                parts.append(f'<tr{cls}><td>{esc(month)}</td><td>{esc(product)}</td><td>{n}</td>'
-                             f'<td>{fmt(o)}</td><td>{fmt(p)}</td><td>{fmt(q)}</td></tr>')
-            parts.append(f'<tr class="subtotal"><td>{esc(month)}</td><td>小计</td><td>{subtotal[3]}</td>'
-                         f'<td>{fmt(subtotal[0])}</td><td>{fmt(subtotal[1])}</td><td>{fmt(subtotal[2])}</td></tr>')
+            o, p, q, n = groups[month]
+            total[0] += n; total[1] += o; total[2] += p; total[3] += q
+            parts.append(f'<tr><td>{esc(month)}</td><td>{n}</td>'
+                         f'<td>{fmt(o)}</td><td>{fmt(p)}</td><td>{fmt(q)}</td></tr>')
+        parts.append(f'<tr class="subtotal"><td>合计</td><td>{total[0]}</td>'
+                     f'<td>{fmt(total[1])}</td><td>{fmt(total[2])}</td><td>{fmt(total[3])}</td></tr>')
 
         parts.append('</tbody></table></div>')
         return '\n'.join(parts)
