@@ -508,6 +508,11 @@ class ReportExportTool(AutoSignTool):
                     out.append(report_status)
                 elif col[1] in ('AA', 'AB'):
                     out.append(aa if col[1] == 'AA' else ab)
+                elif col[1] == 'AI':
+                    # 合同名称只取第一个'-'前面的内容
+                    cv = cell(self._col_num(col[1]) - 1)
+                    cv = str(cv).strip() if cv is not None else ''
+                    out.append(cv.split('-', 1)[0].strip() if cv else None)
                 else:
                     out.append(cell(self._col_num(col[1]) - 1))
 
