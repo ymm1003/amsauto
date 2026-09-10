@@ -565,7 +565,7 @@ class ReportExportTool(AutoSignTool):
         table_body = '\n'.join(trs)
 
         col_options = self._build_filter_options(body_rows)
-        col_idx_json = '{"month": 0, "vendor_owner": 4, "remain": 7, "status": 13, "dev_work": 5, "report_len": 6}'
+        col_idx_json = '{"month": 0, "vendor_owner": 4, "remain": 7, "status": 12, "dev_work": 5, "report_len": 6}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -745,7 +745,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         return s
 
     def _build_filter_options(self, body_rows):
-        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx4), 需求状态(idx13)"""
+        """从明细数据提取下拉选项: 排期月份(idx0,归并年月,空=未排期), 厂商需求负责人(idx4), 需求状态(idx12)"""
         import html as html_mod
 
         def collect(idx, allow_empty_label='(空)', transform=None):
@@ -763,7 +763,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
 
         month_opts = collect(0, '未排期', transform=self._to_ym)
         vendor_opts = collect(4)
-        status_opts = collect(13)
+        status_opts = collect(12)
         return (month_opts, vendor_opts, status_opts)
 
     @staticmethod
