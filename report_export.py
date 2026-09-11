@@ -41,6 +41,60 @@ class ReportExportTool(AutoSignTool):
             return os.path.dirname(sys.executable)
         return os.path.dirname(os.path.abspath(__file__))
 
+    def _load_dev_reporter_map(self):
+        """加载account.ini开发人员→报工人员映射（-前面是开发人员，后面是报工人员）"""
+        path = os.path.join(self._get_base_dir(), 'account.ini')
+        mapping = {}
+        if not os.path.exists(path):
+            self.logger.warning(f"未找到account.ini: {path}，报工人员将使用开发人员原名")
+            return mapping
+        try:
+            for enc in ('utf-8-sig', 'utf-8', 'gbk', 'gb18030'):
+                try:
+                    with open(path, 'r', encoding=enc) as f:
+                        lines = f.readlines()
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                self.logger.error(f"无法解析account.ini编码: {path}")
+                return mapping
+            for line in lines:
+                line = line.strip()
+                if not line or '-' not in line:
+                    continue
+                dev, reporter = line.split('-', 1)
+                dev = dev.strip()
+                reporter = reporter.strip()
+                if dev:
+                    mapping[dev] = reporter
+            self.logger.info(f"account.ini载入: {len(mapping)}个开发人员映射")
+        except Exception as e:
+            self.logger.error(f"读取account.ini异常: {str(e)}")
+        return mapping
+
+    @staticmethod
+    def _strip_paren(name):
+        """去掉名字中的括号及括号内内容（半角/全角）"""
+        import re as re_mod
+        return re_mod.sub(r'[（(][^（）()]*[）)]', '', name).strip()
+
+    @staticmethod
+    def _map_dev_reporters(dev_value, mapping):
+        """开发人员→报工人员：逐人拆分（\n和,分隔），去括号后查account.ini映射，
+        命中用报工人员，未命中用原名(含括号)，去重后用\n拼接"""
+        if not dev_value:
+            return None
+        names = []
+        for part in str(dev_value).replace('\r', '\n').replace('，', ',').split('\n'):
+            for name in part.split(','):
+                name = name.strip()
+                if not name or name in names:
+                    continue
+                mapped = mapping.get(ReportExportTool._strip_paren(name))
+                names.append(mapped if mapped else name)
+        return '\n'.join(names) if names else None
+
     def _get_users_path(self):
         if getattr(self, '_users_path_override', None):
             return self._users_path_override
@@ -558,9 +612,9 @@ class ReportExportTool(AutoSignTool):
             self.logger.error("未安装openpyxl，无法执行合并")
             return None
 
-        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/需求状态/上线时间/上线结果/到达集成商时间/实际上线时间，其它列放最后
-        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',) / ('online_time',) / ('online_result',)
-        FRONT_COLS = [('order', 'B'), ('order', 'G'), ('report_status',), ('sub', 2), ('sub', 3), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
+        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/报工人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/需求状态/上线时间/上线结果/到达集成商时间/实际上线时间，其它列放最后
+        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',) / ('online_time',) / ('online_result',) / ('reporter',)
+        FRONT_COLS = [('order', 'B'), ('order', 'G'), ('report_status',), ('sub', 2), ('sub', 3), ('reporter',), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
                       ('diff',), ('order', 'H'), ('online_time',), ('online_result',), ('order', 'AF'), ('order', 'AG')]
         BACK_COLS = [('order', c) for c in ['A', 'F', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U', 'AI']]
         ORDER_COLS = FRONT_COLS + BACK_COLS
@@ -568,9 +622,14 @@ class ReportExportTool(AutoSignTool):
         SUBTASK_FIELD_IDX = {2: 5, 3: 6}
         ORDER_KEYWORD_COL = 'R'
         KEYWORD = '思特奇'
-        # 上线时间/上线结果列的位置（需求状态idx9后两列）
-        ONLINE_TIME_IDX = 10
-        ONLINE_RESULT_IDX = 11
+        # 上线时间/上线结果列的位置（报工状态idx2后: 需求状态idx10, 上线时间idx11, 上线结果idx12）
+        ONLINE_TIME_IDX = 11
+        ONLINE_RESULT_IDX = 12
+        # 开发人员列(idx4,子任务填充后) → 报工人员列(idx5)
+        # FRONT_COLS实际索引: 0排期月份 1需求名称 2报工状态 3产品线 4开发人员 5报工人员 6厂商需求负责人 7开发工作量 8报工时长 9剩余 10需求状态 11上线时间 12上线结果
+        DEV_IDX = 4
+        REPORTER_IDX = 5
+        dev_reporter_map = self._load_dev_reporter_map()
         # 不纳入分析范围的工单类型
         EXCLUDED_ORDER_TYPES = {'缺陷工单', '新一代需求流程'}
         # 需求状态 → 报工状态 映射
@@ -633,6 +692,8 @@ class ReportExportTool(AutoSignTool):
                 merged_header.append(subtask_header[SUBTASK_FIELD_IDX[col[1]]])
             elif col[0] == 'report_status':
                 merged_header.append("报工状态")
+            elif col[0] == 'reporter':
+                merged_header.append("报工人员")
             elif col[0] == 'online_time':
                 merged_header.append("上线时间")
             elif col[0] == 'online_result':
@@ -720,6 +781,8 @@ class ReportExportTool(AutoSignTool):
                     out.append(None)
                 elif col[0] == 'report_status':
                     out.append(report_status)
+                elif col[0] == 'reporter':
+                    out.append(None)
                 elif col[0] in ('online_time', 'online_result'):
                     out.append(None)
                 elif col[1] in ('AA', 'AB'):
@@ -757,6 +820,10 @@ class ReportExportTool(AutoSignTool):
                         if vals:
                             out[i] = '\n'.join(vals)
                 matched_rows += len(sub_rows)
+
+            # 报工人员: 由开发人员逐人查account.ini映射，未命中用原名（须在sub填充后执行）
+            if out[DEV_IDX]:
+                out[REPORTER_IDX] = self._map_dev_reporters(out[DEV_IDX], dev_reporter_map)
 
             data_row = list(out)
             ws.append(data_row)
@@ -838,7 +905,7 @@ class ReportExportTool(AutoSignTool):
 
         col_options = self._build_filter_options(body_rows)
         contract_btns = col_options[4]
-        col_idx_json = '{"month": 0, "vendor_owner": 5, "remain": 8, "status": 9, "dev_work": 6, "report_len": 7, "report_status": 2, "contract": 24, "online_time": 10, "online_result": 11}'
+        col_idx_json = '{"month": 0, "vendor_owner": 6, "remain": 9, "status": 10, "dev_work": 7, "report_len": 8, "report_status": 2, "contract": 25, "online_time": 11, "online_result": 12}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1077,15 +1144,15 @@ document.getElementById('cnt').textContent = {len(body_rows)};
             )
 
         month_opts = collect(0, '未排期', transform=self._to_ym)
-        vendor_opts = collect(5)
-        status_opts = collect(9)
+        vendor_opts = collect(6)
+        status_opts = collect(10)
         report_status_opts = collect(2)
-        online_time_opts = collect(10)
-        online_result_opts = collect(11)
+        online_time_opts = collect(11)
+        online_result_opts = collect(12)
         contract_vals = []
         seen = set()
         for row in body_rows:
-            v = row[24] if 24 < len(row) else None
+            v = row[25] if 25 < len(row) else None
             s = str(v).strip() if v is not None and str(v).strip() else '(空)'
             if s not in seen:
                 seen.add(s)
@@ -1112,7 +1179,7 @@ document.getElementById('cnt').textContent = {len(body_rows)};
         def esc(v):
             return html_mod.escape(str(v)) if v is not None else ''
 
-        IDX_B, IDX_O, IDX_P = 0, 6, 7
+        IDX_B, IDX_O, IDX_P = 0, 7, 8
 
         def fmt(v):
             if v is None:
