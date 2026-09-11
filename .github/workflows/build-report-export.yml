@@ -7,6 +7,7 @@ on:
       - 'report_export.py'
       - 'sign_tool.py'
       - 'config.json'
+      - 'account.ini'
   workflow_dispatch:
 
 jobs:
@@ -26,6 +27,7 @@ jobs:
 
       - run: copy config.json dist\
       - run: copy users.json dist\
+      - run: copy account.ini dist\
 
       - uses: actions/upload-artifact@v4
         with:
