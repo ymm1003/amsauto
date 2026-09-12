@@ -313,6 +313,65 @@ class ReportExportTool(AutoSignTool):
         self.logger.info(f"[{task_name}] 步骤2: 下载文件")
         return self._download_b_file(task_name, base_url, b_cookie, file_name, referer)
 
+    def export_work_report(self, task_cfg, b_cookie, begin_date, end_date):
+        """导出报工列表（WorkInfoQueryReq）：报工明细，含worktaskname(需求任务)与worklength(报工时长)"""
+        import requests as requests_mod
+        task_name = task_cfg.get('name', '报工列表')
+        base_url = self.b_config['baseUrl']
+        page = f"{base_url}/dcits/task/report/WorkInfoQueryReq"
+        list_url = f"{page}/list"
+        export_url = f"{page}/export"
+
+        headers = {
+            "Cookie": f"JSESSIONID={b_cookie}",
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "Mozilla/5.0 (Windows NT 6.1; ) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.115 Safari/537.36 Qaxbrowser",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Origin": base_url,
+            "Referer": page,
+        }
+        extra = task_cfg.get('listParams', {})
+        params = {
+            'username': '',
+            'worktime_start': begin_date,
+            'worktime_end': end_date,
+            'worktaskname': '',
+            'auditstatus': '',
+            'bureauname': '',
+            'firstdevperson': '',
+            'jichengshang': '',
+            'reqtype': '',
+            'applytype': '',
+            'workcontractname': '',
+        }
+        if extra:
+            for k, v in extra.items():
+                if v not in ('', None):
+                    params[k] = v
+
+        self.logger.info(f"[{task_name}] 步骤1: 调用导出接口获取文件名 ({params['worktime_start']} ~ {params['worktime_end']})")
+        try:
+            resp = requests_mod.post(export_url, headers=headers, data=params, timeout=60, verify=False)
+            if resp.status_code != 200:
+                self.logger.error(f"[{task_name}] 导出接口请求失败: HTTP {resp.status_code}")
+                return None
+            result = resp.json()
+            if result.get('code') != 0:
+                self.logger.error(f"[{task_name}] 导出接口返回失败: {result}")
+                return None
+            file_name = result.get('msg')
+            if not file_name:
+                self.logger.error(f"[{task_name}] 导出接口未返回文件名: {result}")
+                return None
+            self.logger.info(f"[{task_name}] 获取到文件名: {file_name}")
+        except Exception as e:
+            self.logger.error(f"[{task_name}] 调用导出接口异常: {str(e)}")
+            return None
+
+        self.logger.info(f"[{task_name}] 步骤2: 下载文件")
+        return self._download_b_file(task_name, base_url, b_cookie, file_name, page)
+
     def _download_b_file(self, task_name, base_url, b_cookie, file_name, referer):
         headers = {
             "Cookie": f"JSESSIONID={b_cookie}",
@@ -568,17 +627,23 @@ class ReportExportTool(AutoSignTool):
         order_file = None
         subtask_file = None
         online_file = None
+        workreport_file = None
         for task_cfg in tasks:
-            if task_cfg.get('type') == 'onlinelist':
+            ttype = task_cfg.get('type')
+            if ttype == 'onlinelist':
                 result = self.export_online_list(task_cfg, b_cookie)
+            elif ttype == 'workreport':
+                result = self.export_work_report(task_cfg, b_cookie, begin_date, end_date)
             else:
                 result = self.export_one(task_cfg, b_cookie, begin_date, end_date)
             if result:
                 success_count += 1
-                if task_cfg.get('type') == 'developsubtask':
+                if ttype == 'developsubtask':
                     subtask_file = result
-                elif task_cfg.get('type') == 'onlinelist':
+                elif ttype == 'onlinelist':
                     online_file = result
+                elif ttype == 'workreport':
+                    workreport_file = result
                 else:
                     order_file = result
             else:
@@ -590,7 +655,7 @@ class ReportExportTool(AutoSignTool):
         if order_file and subtask_file:
             self.logger.info("开始合并工单与子任务文件...")
             try:
-                merged = self.merge_reports(order_file, subtask_file, online_file)
+                merged = self.merge_reports(order_file, subtask_file, online_file, workreport_file)
                 if merged:
                     self.logger.info(f"合并完成: {merged}")
             except Exception as e:
@@ -605,28 +670,30 @@ class ReportExportTool(AutoSignTool):
             n = n * 26 + ord(c) - 64
         return n
 
-    def merge_reports(self, order_file, subtask_file, online_file=None):
+    def merge_reports(self, order_file, subtask_file, online_file=None, workreport_file=None):
         try:
             from openpyxl import Workbook
         except ImportError:
             self.logger.error("未安装openpyxl，无法执行合并")
             return None
 
-        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/报工人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/需求状态/上线时间/上线结果/到达集成商时间/实际上线时间，其它列放最后
-        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',) / ('online_time',) / ('online_result',) / ('reporter',)
+        # 列顺序: 排期月份/需求名称/报工状态/产品线/开发人员/报工人员/厂商需求负责人/开发工作量/报工时长/剩余工作量/近期报工量/需求状态/上线时间/上线结果/到达集成商时间/实际上线时间，其它列放最后
+        # 值格式: ('order', 列字母) / ('sub', 子任务位置索引0-3) / ('diff',) / ('report_status',) / ('online_time',) / ('online_result',) / ('reporter',) / ('recent_report',)
         FRONT_COLS = [('order', 'B'), ('order', 'G'), ('report_status',), ('sub', 2), ('sub', 3), ('reporter',), ('order', 'T'), ('order', 'AA'), ('order', 'AB'),
-                      ('diff',), ('order', 'H'), ('online_time',), ('online_result',), ('order', 'AF'), ('order', 'AG')]
+                      ('diff',), ('recent_report',), ('order', 'H'), ('online_time',), ('online_result',), ('order', 'AF'), ('order', 'AG')]
         BACK_COLS = [('order', c) for c in ['A', 'F', 'J', 'K', 'L', 'O', 'P', 'Q', 'S', 'U', 'AI']]
         ORDER_COLS = FRONT_COLS + BACK_COLS
         # 子任务文件位置索引: 产品线=5, 开发人员=6（开发子任务名称/流程状态列已去掉）
         SUBTASK_FIELD_IDX = {2: 5, 3: 6}
         ORDER_KEYWORD_COL = 'R'
         KEYWORD = '思特奇'
-        # 上线时间/上线结果列的位置（报工状态idx2后: 需求状态idx10, 上线时间idx11, 上线结果idx12）
-        ONLINE_TIME_IDX = 11
-        ONLINE_RESULT_IDX = 12
+        # 上线时间/上线结果列的位置（剩余工作量idx9后: 近期报工量idx10, 需求状态idx11, 上线时间idx12, 上线结果idx13）
+        ONLINE_TIME_IDX = 12
+        ONLINE_RESULT_IDX = 13
+        # 近期报工量列位置（剩余工作量之后）
+        RECENT_IDX = 10
         # 开发人员列(idx4,子任务填充后) → 报工人员列(idx5)
-        # FRONT_COLS实际索引: 0排期月份 1需求名称 2报工状态 3产品线 4开发人员 5报工人员 6厂商需求负责人 7开发工作量 8报工时长 9剩余 10需求状态 11上线时间 12上线结果
+        # FRONT_COLS实际索引: 0排期月份 1需求名称 2报工状态 3产品线 4开发人员 5报工人员 6厂商需求负责人 7开发工作量 8报工时长 9剩余 10近期报工量 11需求状态 12上线时间 13上线结果
         DEV_IDX = 4
         REPORTER_IDX = 5
         dev_reporter_map = self._load_dev_reporter_map()
@@ -668,6 +735,8 @@ class ReportExportTool(AutoSignTool):
                 merged_header.append("报工状态")
             elif col[0] == 'reporter':
                 merged_header.append("报工人员")
+            elif col[0] == 'recent_report':
+                merged_header.append("近期报工量")
             elif col[0] == 'online_time':
                 merged_header.append("上线时间")
             elif col[0] == 'online_result':
@@ -679,6 +748,32 @@ class ReportExportTool(AutoSignTool):
 
         g_col = self._col_num('G') - 1
         r_col = self._col_num(ORDER_KEYWORD_COL) - 1
+
+        # 近期报工量: 报工列表任务名称(worktaskname)去"-思特奇-"后缀 → 报工时长求和
+        recent_map = {}
+        if workreport_file:
+            wr_data = self._read_xlsx_rows(workreport_file)
+            if wr_data and len(wr_data) > 1:
+                whdr = wr_data[0]
+                task_i = next((i for i, h in enumerate(whdr) if h and str(h).strip() in ('报工任务名称', '需求任务')), -1)
+                len_i = next((i for i, h in enumerate(whdr) if h and str(h).strip() == '报工时长'), -1)
+                if task_i < 0 or len_i < 0:
+                    self.logger.warning(f"报工列表缺少需求任务/报工时长列, 表头: {whdr}")
+                else:
+                    for wrow in wr_data[1:]:
+                        tn = wrow[task_i] if task_i < len(wrow) else None
+                        tn = str(tn).strip() if tn is not None else ''
+                        if not tn:
+                            continue
+                        if '-思特奇-' in tn:
+                            tn = tn.split('-思特奇-', 1)[0].strip()
+                        if not tn:
+                            continue
+                        v = self._to_num(wrow[len_i] if len_i < len(wrow) else None)
+                        if v is None:
+                            v = 0
+                        recent_map[tn] = round(recent_map.get(tn, 0) + v, 2)
+                    self.logger.info(f"报工列表载入: {len(recent_map)}个需求, 明细{len(wr_data) - 1}条")
 
         # 上线清单: 需求名称(idx5) → (上线时间idx1, 上线状态idx7)，精确匹配
         online_map = {}
@@ -757,6 +852,8 @@ class ReportExportTool(AutoSignTool):
                     out.append(report_status)
                 elif col[0] == 'reporter':
                     out.append(None)
+                elif col[0] == 'recent_report':
+                    out.append(None)
                 elif col[0] in ('online_time', 'online_result'):
                     out.append(None)
                 elif col[1] in ('AA', 'AB'):
@@ -777,6 +874,10 @@ class ReportExportTool(AutoSignTool):
                 o_t, o_r = online_map[g_name]
                 out[ONLINE_TIME_IDX] = o_t
                 out[ONLINE_RESULT_IDX] = o_r
+
+            # 近期报工量: 需求名称精确匹配报工列表汇总
+            if g_name in recent_map:
+                out[RECENT_IDX] = recent_map[g_name]
 
             if sub_rows:
                 matched_orders += 1
@@ -879,7 +980,7 @@ class ReportExportTool(AutoSignTool):
 
         col_options = self._build_filter_options(body_rows)
         contract_btns = col_options[4]
-        col_idx_json = '{"month": 0, "vendor_owner": 6, "remain": 9, "status": 10, "dev_work": 7, "report_len": 8, "report_status": 2, "contract": 25, "online_time": 11, "online_result": 12}'
+        col_idx_json = '{"month": 0, "vendor_owner": 6, "remain": 9, "status": 11, "dev_work": 7, "report_len": 8, "report_status": 2, "contract": 26, "online_time": 12, "online_result": 13}'
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1119,14 +1220,14 @@ document.getElementById('cnt').textContent = {len(body_rows)};
 
         month_opts = collect(0, '未排期', transform=self._to_ym)
         vendor_opts = collect(6)
-        status_opts = collect(10)
+        status_opts = collect(11)
         report_status_opts = collect(2)
-        online_time_opts = collect(11)
-        online_result_opts = collect(12)
+        online_time_opts = collect(12)
+        online_result_opts = collect(13)
         contract_vals = []
         seen = set()
         for row in body_rows:
-            v = row[25] if 25 < len(row) else None
+            v = row[26] if 26 < len(row) else None
             s = str(v).strip() if v is not None and str(v).strip() else '(空)'
             if s not in seen:
                 seen.add(s)
