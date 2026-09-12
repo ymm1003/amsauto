@@ -542,10 +542,23 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='自动签到签退工具')
     parser.add_argument('-u', '--users', help='用户配置文件路径', default=None)
+    parser.add_argument('--now', action='store_true', help='立即执行一次（配合--in/--out指定动作，默认签退）')
+    parser.add_argument('--in', dest='sign_in', action='store_true', help='立即执行签到')
+    parser.add_argument('--out', dest='sign_out', action='store_true', help='立即执行签退')
     args = parser.parse_args()
 
     if args.users:
         sys.argv.extend(['-u', args.users])
 
     tool = AutoSignTool()
-    tool.run_schedule()
+
+    if args.now or args.sign_in or args.sign_out:
+        mode = 'signin' if args.sign_in and not args.sign_out else 'signout'
+        action = "签到" if mode == "signin" else "签退"
+        tool.logger.info(f"立即执行一次{action}")
+        try:
+            tool.run_single_round("立即执行", mode)
+        except Exception as e:
+            tool.logger.error(f"立即执行异常: {str(e)}", exc_info=True)
+    else:
+        tool.run_schedule()
