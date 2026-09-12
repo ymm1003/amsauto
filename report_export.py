@@ -699,10 +699,37 @@ class ReportExportTool(AutoSignTool):
         dev_reporter_map = self._load_dev_reporter_map()
         # 不纳入分析范围的工单类型
         EXCLUDED_ORDER_TYPES = {'缺陷工单', '新一代需求流程'}
-        # 需求状态 → 报工状态 映射（config.json的reportExport.reportStatusMap）
-        REPORT_STATUS_MAP = self.export_config.get('reportStatusMap', {})
-        if not REPORT_STATUS_MAP:
-            self.logger.warning("未配置reportStatusMap，报工状态列将为空")
+        # 需求状态 → 报工状态 映射（config.json的reportExport.reportStatusMap，未配置时用内置默认）
+        DEFAULT_STATUS_MAP = {
+            '一级业务需求_工作量和方案反馈': '未到开发',
+            '数智化部需求_工作量和方案反馈': '未到开发',
+            '业务需求_工作量和方案反馈': '未到开发',
+            '业务需求_待集成商经分开发': '可报工',
+            '一级业务需求_开发中': '可报工',
+            '数智化部需求_开发中': '可报工',
+            '数智化部需求_待集成商经分开发': '可报工',
+            '业务需求_开发中': '可报工',
+            '业务需求_上线中': '可报工',
+            '数智化部需求_上线中': '可报工',
+            '一级业务需求_上线中': '可报工',
+            '业务需求_待移交维护': '可报工',
+            '一级业务需求_待移交维护': '可报工',
+            '业务需求_待需求提出人经分开发结果确认': '可报工',
+            '数智化部需求_待维护交接': '可报工',
+            '网管需求_上线中': '可报工',
+            '业务需求_待维护交接': '可报工',
+            '一级业务需求_移交维护中': '不能报工',
+            '业务需求_已关闭': '不能报工',
+            '数智化部需求_已关闭': '不能报工',
+            '一级业务需求_已关闭': '不能报工',
+            '业务需求_移交维护中': '不能报工',
+            '数智化部需求_维护交接中': '不能报工',
+            '业务需求_维护交接中': '不能报工',
+            '一级业务需求_已取消': '已取消',
+            '业务需求_已取消': '已取消',
+            '数智化部需求_已取消': '已取消',
+        }
+        REPORT_STATUS_MAP = self.export_config.get('reportStatusMap') or DEFAULT_STATUS_MAP
 
         self.logger.info(f"读取工单文件: {order_file}")
         order_data = self._read_xlsx_rows(order_file)
