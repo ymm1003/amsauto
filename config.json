@@ -51,6 +51,7 @@
     "savePath": "./export",
     "mergePath": "./export/merge",
     "jcstime1": "2026-01-01",
+    "dateRangeDays": 30,
     "times": [
       "08:00"
     ],
