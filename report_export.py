@@ -875,9 +875,9 @@ class ReportExportTool(AutoSignTool):
                 out[ONLINE_TIME_IDX] = o_t
                 out[ONLINE_RESULT_IDX] = o_r
 
-            # 近期报工量: 需求名称精确匹配报工列表汇总
+            # 近期报工量: 需求名称精确匹配报工列表汇总, 除8保留两位小数
             if g_name in recent_map:
-                out[RECENT_IDX] = recent_map[g_name]
+                out[RECENT_IDX] = round(recent_map[g_name] / 8, 2)
 
             if sub_rows:
                 matched_orders += 1
