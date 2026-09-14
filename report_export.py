@@ -994,20 +994,20 @@ class ReportExportTool(AutoSignTool):
             return
         target_str = target.strftime('%Y-%m-%d')
 
-        # account.ini报工人员名单
+        # account.ini名单: 开发人员+报工人员两侧共50个账号
         dev_reporter_map = self._load_dev_reporter_map()
-        reporters = set(dev_reporter_map.values())
-        if not reporters:
-            self.logger.warning("account.ini无报工人员映射，跳过未报工人员分析")
+        all_accounts = set(dev_reporter_map.keys()) | set(dev_reporter_map.values())
+        if not all_accounts:
+            self.logger.warning("account.ini无账号映射，跳过未报工人员分析")
             return
 
         reported = day_persons.get(target_str, set())
-        no_report = sorted(reporters - reported)
+        no_report = sorted(all_accounts - reported)
         # 反查: 报工人员对应的开发人员账号
         dev_of = {}
         for d, r in dev_reporter_map.items():
             dev_of.setdefault(r, []).append(d)
-        self.logger.info(f"未报工分析: {target_str} 应报{len(reporters)}人, 已报{len(reported & reporters)}人, 未报{len(no_report)}人")
+        self.logger.info(f"未报工分析: {target_str} 应报{len(all_accounts)}人, 已报{len(reported & all_accounts)}人, 未报{len(no_report)}人")
 
         # 生成未报工页面
         def esc(v):
@@ -1015,8 +1015,17 @@ class ReportExportTool(AutoSignTool):
 
         rows_html = []
         for i, name in enumerate(no_report, 1):
-            devs = '、'.join(sorted(dev_of.get(name, []))) or '-'
-            rows_html.append(f'<tr><td>{i}</td><td>{esc(name)}</td><td>{esc(devs)}</td><td class="miss">未报工</td></tr>')
+            # 报工人员身份(开发/报工侧或两者)与关联账号
+            if name in dev_reporter_map and name in dev_of:
+                role = '开发+报工'
+                linked = '、'.join(sorted(dev_of.get(name, [])))
+            elif name in dev_reporter_map:
+                role = '开发人员'
+                linked = dev_reporter_map[name]
+            else:
+                role = '报工人员'
+                linked = '、'.join(sorted(dev_of.get(name, []))) or '-'
+            rows_html.append(f'<tr><td>{i}</td><td>{esc(name)}</td><td>{esc(role)}</td><td>{esc(linked)}</td><td class="miss">未报工</td></tr>')
         page = f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1039,10 +1048,10 @@ td.miss {{ color: #e64340; font-weight: 600; }}
 <body>
 <div class="back"><a href="{esc(analysis_html_name)}">&larr; 返回需求报工完成分析</a></div>
 <h1>未报工人员清单</h1>
-<div class="info">目标工作日: <b>{target_str}</b> ｜ 应报工: <b>{len(reporters)}</b> 人（account.ini报工人员） ｜ 未报工: <b class="miss" style="color:#e6412e">{len(no_report)}</b> 人</div>
+<div class="info">目标工作日: <b>{target_str}</b> ｜ 应报工: <b>{len(all_accounts)}</b> 人（account.ini开发+报工人员） ｜ 未报工: <b class="miss" style="color:#e6412e">{len(no_report)}</b> 人</div>
 <table>
-<thead><tr><th style="width:50px">序号</th><th>报工人员</th><th>开发人员账号</th><th style="width:90px">状态</th></tr></thead>
-<tbody>{''.join(rows_html) if rows_html else '<tr><td colspan="4" class="ok">全部已报工</td></tr>'}</tbody>
+<thead><tr><th style="width:50px">序号</th><th>账号</th><th style="width:90px">身份</th><th>关联账号</th><th style="width:90px">状态</th></tr></thead>
+<tbody>{''.join(rows_html) if rows_html else '<tr><td colspan="5" class="ok">全部已报工</td></tr>'}</tbody>
 </table>
 </body>
 </html>'''
