@@ -936,7 +936,137 @@ class ReportExportTool(AutoSignTool):
             f.write(html_all)
         self.logger.info(f"HTML已生成: {html_all_path}")
 
+        # 未报工人员页面生成，分析页加链接
+        self._generate_no_report_html(workreport_file, save_dir, date_str, html_all_path)
+
         return merged_path
+
+    def _is_workday(self, dt):
+        """工作日判定: 周六日及配置的节假日(holidays)为非工作日"""
+        if dt.weekday() >= 5:
+            return False
+        holidays = self.config.get('holidays', [])
+        return dt.strftime('%Y-%m-%d') not in holidays
+
+    def _generate_no_report_html(self, workreport_file, save_dir, date_str, analysis_html_name):
+        """分析前一天报工列表，与account.ini报工人员比对，生成未报工账号页面；
+        前一天非工作日时往前找最近的工作日"""
+        import html as html_mod
+        from datetime import timedelta as td
+
+        if not workreport_file:
+            self.logger.info("无报工列表文件，跳过未报工人员分析")
+            return
+        if not analysis_html_name:
+            analysis_html_name = f"需求报工完成分析@{date_str}.html"
+        link_target = os.path.basename(analysis_html_name).replace('.html', '.html')
+        # 链接要写到分析页里，分析页名不带路径
+        analysis_html_name = os.path.basename(analysis_html_name)
+
+        wr_data = self._read_xlsx_rows(workreport_file)
+        if not wr_data or len(wr_data) < 2:
+            self.logger.warning("报工列表无数据，跳过未报工人员分析")
+            return
+        whdr = wr_data[0]
+        time_i = next((i for i, h in enumerate(whdr) if h and str(h).strip() == '报工时间'), -1)
+        person_i = next((i for i, h in enumerate(whdr) if h and str(h).strip() == '报工人员'), -1)
+        if time_i < 0 or person_i < 0:
+            self.logger.warning(f"报工列表缺少报工时间/报工人员列，跳过未报工分析, 表头: {whdr}")
+            return
+
+        # 逐日报工人员集合
+        day_persons = {}
+        for r in wr_data[1:]:
+            d = str(r[time_i] or '')[:10].strip() if time_i < len(r) else ''
+            p = str(r[person_i] or '').strip() if person_i < len(r) else ''
+            if not d or not p:
+                continue
+            day_persons.setdefault(d, set()).add(p)
+
+        # 目标日: 昨天；若是非工作日往前找最近的工作日
+        target = datetime.now() - td(days=1)
+        for _ in range(10):
+            if self._is_workday(target):
+                break
+            target = target - td(days=1)
+        else:
+            self.logger.warning("近10天无工作日，跳过未报工人员分析")
+            return
+        target_str = target.strftime('%Y-%m-%d')
+
+        # account.ini报工人员名单
+        dev_reporter_map = self._load_dev_reporter_map()
+        reporters = set(dev_reporter_map.values())
+        if not reporters:
+            self.logger.warning("account.ini无报工人员映射，跳过未报工人员分析")
+            return
+
+        reported = day_persons.get(target_str, set())
+        no_report = sorted(reporters - reported)
+        self.logger.info(f"未报工分析: {target_str} 应报{len(reporters)}人, 已报{len(reported & reporters)}人, 未报{len(no_report)}人")
+
+        # 生成未报工页面
+        def esc(v):
+            return html_mod.escape(str(v))
+
+        rows_html = []
+        for i, name in enumerate(no_report, 1):
+            rows_html.append(f'<tr><td>{i}</td><td>{esc(name)}</td><td class="miss">未报工</td></tr>')
+        page = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>未报工人员@{date_str}</title>
+<style>
+body {{ font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 24px; color: #333; }}
+h1 {{ font-size: 20px; }}
+.back {{ font-size: 13px; margin-bottom: 14px; }}
+.back a {{ color: #1677ff; text-decoration: none; }}
+.back a:hover {{ text-decoration: underline; }}
+.info {{ font-size: 14px; color: #555; margin-bottom: 14px; }}
+table {{ border-collapse: collapse; width: 420px; }}
+th, td {{ border: 1px solid #e0e0e0; padding: 7px 12px; font-size: 13px; text-align: left; }}
+th {{ background: #f5f6fa; }}
+td.miss {{ color: #e64340; font-weight: 600; }}
+.ok {{ color: #52c41a; font-weight: 600; }}
+</style>
+</head>
+<body>
+<div class="back"><a href="{esc(analysis_html_name)}">&larr; 返回需求报工完成分析</a></div>
+<h1>未报工人员清单</h1>
+<div class="info">目标工作日: <b>{target_str}</b> ｜ 应报工: <b>{len(reporters)}</b> 人（account.ini报工人员） ｜ 未报工: <b class="miss" style="color:#e6412e">{len(no_report)}</b> 人</div>
+<table>
+<thead><tr><th style="width:50px">序号</th><th>报工人员</th><th style="width:90px">状态</th></tr></thead>
+<tbody>{''.join(rows_html) if rows_html else '<tr><td colspan="3" class="ok">全部已报工</td></tr>'}</tbody>
+</table>
+</body>
+</html>'''
+        page_path = os.path.join(save_dir, f"未报工人员@{date_str}.html")
+        with open(page_path, 'w', encoding='utf-8') as f:
+            f.write(page)
+        self.logger.info(f"未报工人员页面已生成: {page_path}")
+
+        # 在分析HTML的统计栏后追加链接
+        try:
+            if os.path.exists(os.path.join(save_dir, analysis_html_name)) or True:
+                analysis_path = os.path.join(save_dir, os.path.basename(analysis_html_name))
+                if os.path.exists(analysis_path):
+                    with open(analysis_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    link = (f'<a class="noreport-link" href="{esc(os.path.basename(page_path))}" '
+                            f'style="margin-left:16px;font-size:13px;color:#e6412e;text-decoration:none;border:1px solid #e6412e;'
+                            f'border-radius:14px;padding:3px 12px;">未报工人员({len(no_report)})</a>')
+                    marker = '<div class="summary">'
+                    if marker in content and 'noreport-link' not in content:
+                        content = content.replace(marker, link + marker, 1)
+                    else:
+                        # 兜底: 插到</style>后第一个div前（即页面顶部）
+                        content = content.replace('<body>', f'<body>{link}', 1)
+                    with open(analysis_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    self.logger.info(f"分析页已追加未报工链接: {analysis_path}")
+        except Exception as e:
+            self.logger.error(f"追加未报工链接失败: {str(e)}")
 
     def _generate_html(self, rows, title, stats=None):
         import html as html_mod
