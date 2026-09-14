@@ -1003,6 +1003,10 @@ class ReportExportTool(AutoSignTool):
 
         reported = day_persons.get(target_str, set())
         no_report = sorted(reporters - reported)
+        # 反查: 报工人员对应的开发人员账号
+        dev_of = {}
+        for d, r in dev_reporter_map.items():
+            dev_of.setdefault(r, []).append(d)
         self.logger.info(f"未报工分析: {target_str} 应报{len(reporters)}人, 已报{len(reported & reporters)}人, 未报{len(no_report)}人")
 
         # 生成未报工页面
@@ -1011,7 +1015,8 @@ class ReportExportTool(AutoSignTool):
 
         rows_html = []
         for i, name in enumerate(no_report, 1):
-            rows_html.append(f'<tr><td>{i}</td><td>{esc(name)}</td><td class="miss">未报工</td></tr>')
+            devs = '、'.join(sorted(dev_of.get(name, []))) or '-'
+            rows_html.append(f'<tr><td>{i}</td><td>{esc(name)}</td><td>{esc(devs)}</td><td class="miss">未报工</td></tr>')
         page = f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1036,8 +1041,8 @@ td.miss {{ color: #e64340; font-weight: 600; }}
 <h1>未报工人员清单</h1>
 <div class="info">目标工作日: <b>{target_str}</b> ｜ 应报工: <b>{len(reporters)}</b> 人（account.ini报工人员） ｜ 未报工: <b class="miss" style="color:#e6412e">{len(no_report)}</b> 人</div>
 <table>
-<thead><tr><th style="width:50px">序号</th><th>报工人员</th><th style="width:90px">状态</th></tr></thead>
-<tbody>{''.join(rows_html) if rows_html else '<tr><td colspan="3" class="ok">全部已报工</td></tr>'}</tbody>
+<thead><tr><th style="width:50px">序号</th><th>报工人员</th><th>开发人员账号</th><th style="width:90px">状态</th></tr></thead>
+<tbody>{''.join(rows_html) if rows_html else '<tr><td colspan="4" class="ok">全部已报工</td></tr>'}</tbody>
 </table>
 </body>
 </html>'''
